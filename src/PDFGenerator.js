@@ -232,6 +232,125 @@ class PDFGenerator {
     return this;
   }
 
+  // ─── Table Page ──────────────────────────────────────────────────────────────
+
+  /**
+   * Renders a styled data table page.
+   *
+   * @param {{
+   *   title:    string,
+   *   subtitle: string,
+   *   columns:  string[],
+   *   rows:     (string|number)[][],
+   *   topN:     number,      // first N data rows get a gold/highlight treatment
+   *   footer:   string,
+   * }} tableData
+   */
+  addTablePage({ title, subtitle, columns, rows, topN = 3, footer = '' }) {
+    this.doc.addPage();
+    this._pageCount++;
+
+    const doc = this.doc;
+    const W   = PAGE_WIDTH;
+    const H   = PAGE_HEIGHT;
+
+    // ── Header bar ──────────────────────────────────────────────────────────
+    doc.rect(0, 0, W, 52).fill(BRAND_DARK);
+
+    // Badge
+    doc.roundedRect(W - PAGE_MARGIN - 90, 12, 80, 26, 5).fill('#4BACC6');
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff')
+      .text('RAW', W - PAGE_MARGIN - 90, 20, { width: 80, align: 'center' });
+
+    doc.font('Helvetica-Bold').fontSize(16).fillColor('#ffffff')
+      .text(title, PAGE_MARGIN, 16, { width: W - PAGE_MARGIN * 2 - 100 });
+
+    // Subtitle
+    if (subtitle) {
+      doc.font('Helvetica').fontSize(10).fillColor(TEXT_GREY)
+        .text(subtitle, PAGE_MARGIN, 60, { width: W - PAGE_MARGIN * 2 });
+    }
+
+    // ── Table layout ────────────────────────────────────────────────────────
+    const tableX    = PAGE_MARGIN;
+    const tableY    = subtitle ? 84 : 64;
+    const tableW    = W - PAGE_MARGIN * 2;
+    const colCount  = columns.length;
+    const colWidths = this._calcColWidths(columns, rows, tableW);
+    const rowH      = 32;
+    const headerH   = 34;
+
+    // Header row background
+    doc.rect(tableX, tableY, tableW, headerH).fill(BRAND_MID);
+
+    // Header labels
+    let cx = tableX;
+    columns.forEach((col, ci) => {
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#ffffff')
+        .text(col, cx + 8, tableY + 10, { width: colWidths[ci] - 16, align: ci === 0 ? 'center' : 'left' });
+      cx += colWidths[ci];
+    });
+
+    // Data rows
+    rows.forEach((row, ri) => {
+      const rowY   = tableY + headerH + ri * rowH;
+      const isTop  = ri < topN;
+      const isEven = ri % 2 === 0;
+
+      // Row background
+      const bgColor = isTop
+        ? (ri === 0 ? '#FFF3CD' : ri === 1 ? '#FFF8E1' : '#FFFDE7')
+        : isEven ? '#f9f9f9' : '#ffffff';
+      doc.rect(tableX, rowY, tableW, rowH).fill(bgColor);
+
+      // Top-N medal indicator
+      if (isTop) {
+        const medals = ['🥇', '🥈', '🥉'];
+        // PDFKit doesn't support emoji — use coloured dot instead
+        const dotColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+        doc.circle(tableX + 16, rowY + rowH / 2, 7).fill(dotColors[ri]);
+      }
+
+      // Cell text
+      let cellX = tableX;
+      row.forEach((cell, ci) => {
+        const textColor = isTop ? '#1a1a2e' : BRAND_DARK;
+        const fontName  = isTop ? 'Helvetica-Bold' : 'Helvetica';
+        doc.font(fontName).fontSize(11).fillColor(textColor)
+          .text(String(cell), cellX + 8, rowY + 10,
+            { width: colWidths[ci] - 16, align: ci === 0 ? 'center' : 'left' });
+        cellX += colWidths[ci];
+      });
+
+      // Row bottom border
+      doc.moveTo(tableX, rowY + rowH).lineTo(tableX + tableW, rowY + rowH)
+        .lineWidth(0.5).strokeColor('#dddddd').stroke();
+    });
+
+    // Table outer border
+    const totalTableH = headerH + rows.length * rowH;
+    doc.rect(tableX, tableY, tableW, totalTableH).lineWidth(1).strokeColor(BRAND_ACCENT).stroke();
+
+    // Column dividers
+    let divX = tableX;
+    for (let ci = 0; ci < colCount - 1; ci++) {
+      divX += colWidths[ci];
+      doc.moveTo(divX, tableY).lineTo(divX, tableY + totalTableH)
+        .lineWidth(0.5).strokeColor('#cccccc').stroke();
+    }
+
+    // ── Footer note ─────────────────────────────────────────────────────────
+    if (footer) {
+      const footerY = tableY + totalTableH + 14;
+      doc.roundedRect(tableX, footerY, tableW, 26, 4).fill(BRAND_LIGHT);
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_ACCENT)
+        .text(footer, tableX + 12, footerY + 7, { width: tableW - 24 });
+    }
+
+    this._drawFooter(doc, W, H);
+    return this;
+  }
+
   // ─── Finalize ────────────────────────────────────────────────────────────────
 
   /**
@@ -246,6 +365,25 @@ class PDFGenerator {
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Distributes column widths proportionally based on header + content length.
+   * @param {string[]}           columns
+   * @param {(string|number)[][]} rows
+   * @param {number}             totalW
+   * @returns {number[]}
+   */
+  _calcColWidths(columns, rows, totalW) {
+    const weights = columns.map((col, ci) => {
+      const maxLen = Math.max(
+        col.length,
+        ...rows.map((r) => String(r[ci] ?? '').length),
+      );
+      return Math.max(maxLen, 6);
+    });
+    const total = weights.reduce((s, w) => s + w, 0);
+    return weights.map((w) => Math.round((w / total) * totalW));
+  }
 
   _drawFooter(doc, W, H) {
     doc
