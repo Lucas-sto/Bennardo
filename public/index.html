@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EyeTracking Dashboard for Shopping Advisors</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <!-- ── Header ─────────────────────────────────────────────────────────── -->
+    <header class="header">
+      <div class="header__inner">
+        <div class="header__logo">
+          <svg class="header__eye" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="32" cy="20" rx="30" ry="18" stroke="#4F81BD" stroke-width="3"/>
+            <circle cx="32" cy="20" r="10" fill="#4F81BD"/>
+            <circle cx="28" cy="16" r="3.5" fill="#ffffff"/>
+          </svg>
+          <div class="header__title-group">
+            <h1 class="header__title">EyeTracking Dashboard</h1>
+            <span class="header__subtitle">for Shopping Advisors</span>
+          </div>
+        </div>
+        <div class="header__badge">
+          <span class="badge badge--blue">PDF Report Generator</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Main ───────────────────────────────────────────────────────────── -->
+    <main class="main">
+
+      <!-- Hero section -->
+      <section class="hero">
+        <p class="hero__text">
+          Upload your eye-tracking CSV exports below. Once both files are
+          selected, click <strong>Generate PDF Report</strong> to produce a
+          full analysis with 6 charts embedded in a branded A4 landscape PDF.
+        </p>
+      </section>
+
+      <!-- Upload card -->
+      <section class="card upload-card" id="uploadCard">
+        <h2 class="card__title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Upload CSV Files
+        </h2>
+
+        <div class="upload-grid">
+          <!-- Raw upload -->
+          <div class="upload-zone" id="zoneRaw">
+            <input type="file" id="inputRaw" accept=".csv" hidden />
+            <label for="inputRaw" class="upload-zone__label" id="labelRaw">
+              <div class="upload-zone__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <span class="upload-zone__tag">1. Upload Raw</span>
+              <span class="upload-zone__hint">Drag &amp; drop or click to browse</span>
+              <span class="upload-zone__format">.csv files only · max 50 MB</span>
+            </label>
+            <div class="upload-zone__preview" id="previewRaw" hidden>
+              <svg class="icon icon--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <div class="upload-zone__preview-info">
+                <span class="upload-zone__filename" id="filenameRaw"></span>
+                <span class="upload-zone__filesize" id="filesizeRaw"></span>
+              </div>
+              <button class="btn-remove" id="removeRaw" title="Remove file">✕</button>
+            </div>
+          </div>
+
+          <!-- Cumulated upload -->
+          <div class="upload-zone" id="zoneCumulated">
+            <input type="file" id="inputCumulated" accept=".csv" hidden />
+            <label for="inputCumulated" class="upload-zone__label" id="labelCumulated">
+              <div class="upload-zone__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <span class="upload-zone__tag">2. Upload Cumulated</span>
+              <span class="upload-zone__hint">Drag &amp; drop or click to browse</span>
+              <span class="upload-zone__format">.csv files only · max 50 MB</span>
+            </label>
+            <div class="upload-zone__preview" id="previewCumulated" hidden>
+              <svg class="icon icon--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <div class="upload-zone__preview-info">
+                <span class="upload-zone__filename" id="filenameCumulated"></span>
+                <span class="upload-zone__filesize" id="filesizeCumulated"></span>
+              </div>
+              <button class="btn-remove" id="removeCumulated" title="Remove file">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress indicator -->
+        <div class="upload-progress">
+          <div class="upload-progress__step" id="stepRaw">
+            <div class="upload-progress__dot" id="dotRaw"></div>
+            <span>Raw data</span>
+          </div>
+          <div class="upload-progress__line"></div>
+          <div class="upload-progress__step" id="stepCumulated">
+            <div class="upload-progress__dot" id="dotCumulated"></div>
+            <span>Cumulated data</span>
+          </div>
+          <div class="upload-progress__line"></div>
+          <div class="upload-progress__step" id="stepGenerate">
+            <div class="upload-progress__dot" id="dotGenerate"></div>
+            <span>Generate PDF</span>
+          </div>
+        </div>
+
+        <!-- Generate button -->
+        <div class="generate-row">
+          <button class="btn btn--primary btn--large" id="btnGenerate" disabled>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+            Generate PDF Report
+          </button>
+          <p class="generate-hint" id="generateHint">
+            Please upload both CSV files to enable report generation.
+          </p>
+        </div>
+      </section>
+
+      <!-- Loading overlay -->
+      <div class="loading-overlay" id="loadingOverlay" hidden>
+        <div class="loading-box">
+          <div class="spinner"></div>
+          <p class="loading-title">Generating Report…</p>
+          <p class="loading-sub" id="loadingStep">Parsing CSV data</p>
+          <div class="loading-bar">
+            <div class="loading-bar__fill" id="loadingBarFill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result card -->
+      <section class="card result-card" id="resultCard" hidden>
+        <div class="result-card__header">
+          <svg class="icon icon--large icon--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <div>
+            <h2 class="result-card__title">Report Ready!</h2>
+            <p class="result-card__sub" id="resultSub">Your PDF has been generated successfully.</p>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <a class="btn btn--primary btn--large" id="btnDownload" href="#" target="_blank" download>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download PDF
+          </a>
+          <button class="btn btn--outline" id="btnReset">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+            </svg>
+            New Report
+          </button>
+        </div>
+
+        <!-- Stats table -->
+        <div class="stats-grid" id="statsGrid"></div>
+      </section>
+
+      <!-- Charts info section -->
+      <section class="card info-card">
+        <h2 class="card__title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          Generated Charts
+        </h2>
+        <div class="charts-grid">
+          <div class="chart-info">
+            <div class="chart-info__num">01</div>
+            <div class="chart-info__body">
+              <strong>Fixation Duration Distribution</strong>
+              <span>Bar chart · Raw data</span>
+              <p>Buckets fixation durations (ms) to reveal attention patterns.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">02</div>
+            <div class="chart-info__body">
+              <strong>Gaze Point Distribution</strong>
+              <span>Scatter plot · Raw data</span>
+              <p>X/Y gaze coordinates showing spatial attention clusters.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">03</div>
+            <div class="chart-info__body">
+              <strong>AOI Dwell Time</strong>
+              <span>Doughnut chart · Cumulated data</span>
+              <p>Proportion of dwell time per Area of Interest.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">04</div>
+            <div class="chart-info__body">
+              <strong>Time Series</strong>
+              <span>Line chart · Raw data</span>
+              <p>Key metric sampled over the full recording session.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">05</div>
+            <div class="chart-info__body">
+              <strong>Raw vs. Cumulated Comparison</strong>
+              <span>Grouped bar · Both datasets</span>
+              <p>Average column values compared side-by-side.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">06</div>
+            <div class="chart-info__body">
+              <strong>Fixation Count per Category</strong>
+              <span>Horizontal bar · Cumulated data</span>
+              <p>Fixation counts broken down by category or participant.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+    <footer class="footer">
+      <p>EyeTracking Dashboard for Shopping Advisors &nbsp;·&nbsp; PDF Report Generator</p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
