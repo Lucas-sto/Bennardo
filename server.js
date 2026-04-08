@@ -11,7 +11,8 @@ const FixationsPerProductChart = require('./src/FixationsPerProductChart');
 const DwellTimePerProductChart = require('./src/DwellTimePerProductChart');
 const FixationsOverTimeChart   = require('./src/FixationsOverTimeChart');
 const DwellTimeOverTimeChart        = require('./src/DwellTimeOverTimeChart');
-const FeatureDistributionPieChart   = require('./src/FeatureDistributionPieChart');
+const FeatureDistributionPieChart        = require('./src/FeatureDistributionPieChart');
+const FeatureDistributionOverTimeChart   = require('./src/FeatureDistributionOverTimeChart');
 const PupilDilationTable            = require('./src/PupilDilationTable');
 const ProductComparisonTable        = require('./src/ProductComparisonTable');
 const UniqueProductsOverTimeChart   = require('./src/UniqueProductsOverTimeChart');
@@ -108,6 +109,10 @@ app.post(
       // Chart 5: Inter-Product – one pie chart for all features (price, brand, details)
       const featureDistChart = new FeatureDistributionPieChart();
       const featureDistBuf   = await featureDistChart.render(processor.rawData || []);
+
+      // Chart 5b: Inter-Product – feature attention share over time (line chart)
+      const featureOverTimeChart = new FeatureDistributionOverTimeChart();
+      const featureOverTimeBuf   = await featureOverTimeChart.render(processor.rawData || []);
 
       // Table 6: Inter-Product – pupil dilation per product
       const pupilTable     = new PupilDilationTable();
@@ -216,6 +221,13 @@ app.post(
         featureDistBuf,
         'Inter-Product: Percentage Looked at Product Features',
         'One pie chart showing the share of fixations on each product feature: Price · Brand · Details.',
+        'raw',
+      );
+
+      pdfGen.addChartPage(
+        featureOverTimeBuf,
+        'Inter-Product: Feature Attention Distribution over Time',
+        'Cumulative dwell-time share (%) per product feature over the session. Each line represents one feature (Price · Brand · Details).',
         'raw',
       );
 
