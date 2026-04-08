@@ -15,11 +15,12 @@ const FeatureDistributionPieChart   = require('./src/FeatureDistributionPieChart
 const PupilDilationTable            = require('./src/PupilDilationTable');
 const ProductComparisonTable        = require('./src/ProductComparisonTable');
 const UniqueProductsOverTimeChart   = require('./src/UniqueProductsOverTimeChart');
+const TotalProductViewsOverTimeChart = require('./src/TotalProductViewsOverTimeChart');
 const SaccadeSpeedChart             = require('./src/SaccadeSpeedChart');
+const AverageFixationDurationChart  = require('./src/AverageFixationDurationChart');
 const FixationVarianceChart         = require('./src/FixationVarianceChart');
 const VisitDurationVarianceChart    = require('./src/VisitDurationVarianceChart');
 const MaxRevisitChart               = require('./src/MaxRevisitChart');
-const ShoppingCartChart             = require('./src/ShoppingCartChart');
 
 const app = express();
 const PORT = 3000;
@@ -66,25 +67,22 @@ app.use('/output', express.static(OUTPUT_DIR));
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-// Upload both CSVs and generate PDF
+// Upload raw CSV and generate PDF - cumulated data is automatically computed
 app.post(
   '/api/generate',
-  upload.fields([
-    { name: 'raw', maxCount: 1 },
-    { name: 'cumulated', maxCount: 1 },
-  ]),
+  upload.single('raw'),
   async (req, res) => {
     try {
-      const rawFile = req.files?.raw?.[0];
-      const cumFile = req.files?.cumulated?.[0];
+      const rawFile = req.file;
 
-      if (!rawFile || !cumFile) {
-        return res.status(400).json({ error: 'Both raw and cumulated CSV files are required.' });
+      if (!rawFile) {
+        return res.status(400).json({ error: 'Raw CSV file is required.' });
       }
 
-      // ── 1. Parse CSVs ──────────────────────────────────────────────────────
+      // ── 1. Parse CSV and generate cumulated data ──────────────────────────
       const processor = new DataProcessor();
-      processor.loadRaw(rawFile.path).loadCumulated(cumFile.path);
+      processor.loadRaw(rawFile.path);
+      processor.generateCumulatedData();
 
       const rawRows = processor.rawData?.length ?? 0;
       const cumRows = processor.cumulatedData?.length ?? 0;
@@ -119,29 +117,34 @@ app.post(
       const comparisonTable     = new ProductComparisonTable();
       const comparisonTableData = comparisonTable.compute(processor.rawData || []);
 
-      // Chart 8: Inter-Product – unique products + total views over time (line)
+      // Chart 8: Inter-Product – cumulative unique products over time
       const uniqueProdsChart = new UniqueProductsOverTimeChart();
-      const uniqueProdsBuf   = await uniqueProdsChart.render(processor.cumulatedData || []);
+      const uniqueProdsBuf   = await uniqueProdsChart.render(processor.rawData || []);
 
-      // Chart 9: Inter-Product – mean saccade speed + avg fixation duration (trend last 10s)
+      // Chart 9: Inter-Product – cumulative total product views over time
+      const totalViewsChart = new TotalProductViewsOverTimeChart();
+      const totalViewsBuf   = await totalViewsChart.render(processor.rawData || []);
+
+      // Chart 10: Inter-Product – mean saccade speed (trend last 10s)
       const saccadeChart = new SaccadeSpeedChart();
-      const saccadeBuf   = await saccadeChart.render(processor.cumulatedData || []);
+      const saccadeBuf   = await saccadeChart.render(processor.rawData || []);
+
+      // Chart 11: Inter-Product – average fixation duration (trend last 10s)
+      const avgFixDurChart = new AverageFixationDurationChart();
+      const avgFixDurBuf   = await avgFixDurChart.render(processor.rawData || []);
 
       // Chart 10: Inter-Product – variance of avg fixation duration (trend last 10s)
       const varianceChart = new FixationVarianceChart();
-      const varianceBuf   = await varianceChart.render(processor.cumulatedData || []);
+      const varianceBuf   = await varianceChart.render(processor.rawData || []);
 
       // Chart 11: Inter-Product – variance of total visit duration (trend last 10s)
       const visitVarChart = new VisitDurationVarianceChart();
-      const visitVarBuf   = await visitVarChart.render(processor.cumulatedData || []);
+      const visitVarBuf   = await visitVarChart.render(processor.rawData || []);
 
       // Chart 12: Inter-Product – max revisit per product (horizontal bar, gold = max)
       const maxRevisitChart = new MaxRevisitChart();
       const maxRevisitBuf   = await maxRevisitChart.render(processor.rawData || []);
 
-      // Chart 13: Inter-Product – shopping cart additions over time
-      const shoppingCartChart = new ShoppingCartChart();
-      const shoppingCartBuf   = await shoppingCartChart.render(processor.cumulatedData || []);
 
       // ── 3. Build PDF ───────────────────────────────────────────────────────
       const ts      = Date.now();
@@ -150,11 +153,16 @@ app.post(
 
       const pdfGen = new PDFGenerator(pdfPath);
 
-      // Count fixations per product for summary stats
+      // Count fixations per product for summary stats (consecutive runs only)
       const fixCounts = {};
+      let prevProduct = null;
       (processor.rawData || []).forEach((r) => {
         const p = r['Target_Product'];
-        if (p) fixCounts[p] = (fixCounts[p] || 0) + 1;
+        if (!p) return;
+        if (p !== prevProduct) {
+          fixCounts[p] = (fixCounts[p] || 0) + 1;
+          prevProduct = p;
+        }
       });
       const fixCountSummary = Object.entries(fixCounts)
         .sort((a, b) => b[1] - a[1])
@@ -163,7 +171,7 @@ app.post(
 
       const stats = {
         'Raw File':              rawFile.originalname,
-        'Cumulated File':        cumFile.originalname,
+        'Cumulated Data':        'Auto-generated from raw data',
         'Total Fixations':       rawRows,
         'Cumulated Rows':        cumRows,
         'Products Observed':     Object.keys(fixCounts).length,
@@ -172,7 +180,7 @@ app.post(
         'Generated At':          new Date().toLocaleString('de-DE'),
       };
 
-      pdfGen.addCoverPage(rawFile.originalname, cumFile.originalname);
+      pdfGen.addCoverPage(rawFile.originalname, 'Auto-generated');
 
       // ── Intra-Product Specific ─────────────────────────────────────────────
       pdfGen.addChartPage(
@@ -217,30 +225,44 @@ app.post(
 
       pdfGen.addChartPage(
         uniqueProdsBuf,
-        'Inter-Product: Unique Products Viewed over Time',
-        'Cumulative unique products and total product views per second. Source: cumulative data.',
-        'cumulated',
+        'Inter-Product: Cumulative Unique Products Viewed over Time',
+        'Cumulative count of distinct products seen from session start. Computed from raw fixation data.',
+        'raw',
+      );
+
+      pdfGen.addChartPage(
+        totalViewsBuf,
+        'Inter-Product: Cumulative Total Product Views over Time',
+        'Cumulative total product views (including revisits) from session start. Computed from raw fixation data.',
+        'raw',
       );
 
       pdfGen.addChartPage(
         saccadeBuf,
-        'Inter-Product: Mean Saccade Speed & Fixation Duration',
-        'Mean saccade speed (left axis) and average fixation duration (right axis) over time. Orange dots = last 10 seconds. Trend shown in subtitle.',
-        'cumulated',
+        'Inter-Product: Rolling Mean Saccade Speed over Time',
+        'Rolling mean saccade speed using a 10-second sliding window. Orange dots = last 10 seconds. Computed from raw fixation data.',
+        'raw',
+      );
+
+      pdfGen.addChartPage(
+        avgFixDurBuf,
+        'Inter-Product: Average Fixation Duration over Time',
+        'Cumulative mean and rolling 10-second window average fixation duration (ms). Computed from raw fixation data.',
+        'raw',
       );
 
       pdfGen.addChartPage(
         varianceBuf,
-        'Inter-Product: Variance of Average Fixation Duration',
-        'Variance of average fixation duration (ms²) over time. Orange dots = last 10 seconds. Current value and trend shown in subtitle.',
-        'cumulated',
+        'Inter-Product: Variance of Fixation Duration over Time',
+        'Cumulative variance and rolling 10-second window variance of fixation duration (ms²). Computed from raw fixation data.',
+        'raw',
       );
 
       pdfGen.addChartPage(
         visitVarBuf,
-        'Inter-Product: Variance across Total Visit Duration per Product',
-        'Variance of total visit duration (ms²) per visited product over time. Orange dots = last 10 seconds. Current value and trend shown in subtitle.',
-        'cumulated',
+        'Inter-Product: Variance of Total Visit Duration per Product over Time',
+        'Cumulative variance and rolling 10-second window variance of total visit duration (ms²) per product. Computed from raw fixation data.',
+        'raw',
       );
 
       pdfGen.addChartPage(
@@ -250,20 +272,12 @@ app.post(
         'raw',
       );
 
-      pdfGen.addChartPage(
-        shoppingCartBuf,
-        'Inter-Product: Times Item Saved to Shopping Cart',
-        'Cumulative add-to-cart events over time. Total shown in title. Orange dots = last 10 seconds.',
-        'cumulated',
-      );
-
       pdfGen.addSummaryPage(stats);
 
       const finalPath = await pdfGen.finalize();
 
       // ── 4. Clean up uploads ────────────────────────────────────────────────
       fs.unlink(rawFile.path, () => {});
-      fs.unlink(cumFile.path, () => {});
 
       res.json({
         success: true,

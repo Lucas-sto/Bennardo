@@ -1,6 +1,7 @@
 'use strict';
 
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 const WIDTH  = 800;
 const HEIGHT = 500;
@@ -48,17 +49,11 @@ class FeatureDistributionPieChart {
    * @returns {Promise<Buffer>}  PNG image buffer
    */
   async render(rows) {
-    // Count fixations per AOI (case-insensitive, capitalise for display)
-    const counts = {};
-    for (const row of rows) {
-      const raw = (row['Target_AOI'] || '').trim();
-      if (!raw) continue;
-      const key = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-      counts[key] = (counts[key] || 0) + 1;
-    }
+    const calculator = new CumulativeStatsCalculator();
+    const dwell = calculator.dwellTimePerAOI(rows);
 
-    // Sort by count descending for a cleaner pie
-    const sorted  = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    // Sort by dwell time descending for a cleaner pie
+    const sorted  = Object.entries(dwell).sort((a, b) => b[1] - a[1]);
     const labels  = sorted.map(([k]) => k);
     const values  = sorted.map(([, v]) => v);
     const total   = values.reduce((s, v) => s + v, 0);
@@ -92,7 +87,7 @@ class FeatureDistributionPieChart {
           },
           subtitle: {
             display: true,
-            text: 'Inter-Product Analysis  ·  Source: Raw Fixation Data  ·  AOI breakdown: brand · price · details',
+            text: 'Inter-Product Analysis  ·  Source: Raw Fixation Data  ·  Dwell time (ms) per AOI: brand · price · details',
             font: { size: 11 },
             color: '#4F81BD',
             padding: { bottom: 14 },
@@ -106,7 +101,7 @@ class FeatureDistributionPieChart {
             callbacks: {
               label: (ctx) => {
                 const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : '0';
-                return `  ${ctx.label.split(' (')[0]}: ${ctx.parsed} fixations (${pct}%)`;
+                return `  ${ctx.label.split(' (')[0]}: ${ctx.parsed} ms (${pct}%)`;
               },
             },
           },

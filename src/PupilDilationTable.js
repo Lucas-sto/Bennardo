@@ -1,5 +1,7 @@
 'use strict';
 
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
+
 /**
  * PupilDilationTable
  * ──────────────────
@@ -29,49 +31,41 @@ class PupilDilationTable {
    * }}
    */
   compute(rows) {
-    // Accumulate sum + count per product
-    const acc = {};
-    for (const row of rows) {
-      const product = row['Target_Product'];
-      const diam    = parseFloat(row['Pupil_Diameter_Mean']);
-      if (!product || isNaN(diam)) continue;
-      if (!acc[product]) acc[product] = { sum: 0, count: 0 };
-      acc[product].sum   += diam;
-      acc[product].count += 1;
-    }
+    const calculator = new CumulativeStatsCalculator();
+    const perProduct = calculator.pupilDilationPerProduct(rows);
 
-    // Compute averages and sort descending
-    const products = Object.entries(acc)
-      .map(([product, { sum, count }]) => ({
-        product,
-        avg: sum / count,
-        count,
-      }))
+    // Sort descending by weighted average
+    const products = Object.entries(perProduct)
+      .map(([product, { avg, totalDuration }]) => ({ product, avg, totalDuration }))
       .sort((a, b) => b.avg - a.avg);
 
-    // Overall average across all fixations
-    const allDiams = rows
-      .map((r) => parseFloat(r['Pupil_Diameter_Mean']))
-      .filter((v) => !isNaN(v));
-    const overallAvg = allDiams.length
-      ? allDiams.reduce((s, v) => s + v, 0) / allDiams.length
-      : 0;
+    // Overall duration-weighted average across all fixations
+    const { totalWeighted, totalDuration } = rows.reduce((acc, r) => {
+      const diam     = parseFloat(r['Pupil_Diameter_Mean']);
+      const duration = parseFloat(r['Duration']);
+      if (!isNaN(diam) && !isNaN(duration) && duration > 0) {
+        acc.totalWeighted  += diam * duration;
+        acc.totalDuration  += duration;
+      }
+      return acc;
+    }, { totalWeighted: 0, totalDuration: 0 });
+    const overallAvg = totalDuration > 0 ? totalWeighted / totalDuration : 0;
 
-    // Table rows: Rank | Product | Avg Pupil Diam | Fixation Count
+    // Table rows: Rank | Product | Weighted Avg Pupil Diam | Total Dwell Time (ms)
     const tableRows = products.map((p, i) => [
       i + 1,
       p.product,
       p.avg.toFixed(3),
-      p.count,
+      Math.round(p.totalDuration),
     ]);
 
     return {
       title:    'Inter-Product: Pupil Dilation per Product',
-      subtitle: 'Average Pupil Diameter (mm) per product · Top 3 highlighted · Source: Raw Fixation Data',
-      columns:  ['Rank', 'Product', 'Avg Pupil Diameter (mm)', 'Fixation Count'],
+      subtitle: 'Duration-weighted average pupil diameter (mm) per product · Top 3 highlighted · Source: Raw Fixation Data',
+      columns:  ['Rank', 'Product', 'Weighted Avg Pupil Diameter (mm)', 'Total Dwell Time (ms)'],
       rows:     tableRows,
       topN:     3,
-      footer:   `Overall average pupil diameter: ${overallAvg.toFixed(3)} mm  (across ${allDiams.length} fixations)`,
+      footer:   `Overall duration-weighted average pupil diameter: ${overallAvg.toFixed(3)} mm`,
     };
   }
 }

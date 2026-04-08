@@ -3,24 +3,12 @@
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
 const inputRaw        = document.getElementById('inputRaw');
-const inputCumulated  = document.getElementById('inputCumulated');
-
 const zoneRaw         = document.getElementById('zoneRaw');
-const zoneCumulated   = document.getElementById('zoneCumulated');
-
 const labelRaw        = document.getElementById('labelRaw');
-const labelCumulated  = document.getElementById('labelCumulated');
-
 const previewRaw      = document.getElementById('previewRaw');
-const previewCumulated= document.getElementById('previewCumulated');
-
 const filenameRaw     = document.getElementById('filenameRaw');
-const filenameCumulated = document.getElementById('filenameCumulated');
 const filesizeRaw     = document.getElementById('filesizeRaw');
-const filesizeCumulated = document.getElementById('filesizeCumulated');
-
 const removeRaw       = document.getElementById('removeRaw');
-const removeCumulated = document.getElementById('removeCumulated');
 
 const btnGenerate     = document.getElementById('btnGenerate');
 const generateHint    = document.getElementById('generateHint');
@@ -35,19 +23,14 @@ const btnDownload     = document.getElementById('btnDownload');
 const btnReset        = document.getElementById('btnReset');
 const statsGrid       = document.getElementById('statsGrid');
 
-const dotRaw          = document.getElementById('dotRaw');
-const dotCumulated    = document.getElementById('dotCumulated');
-const dotGenerate     = document.getElementById('dotGenerate');
 const stepRaw         = document.getElementById('stepRaw');
-const stepCumulated   = document.getElementById('stepCumulated');
 const stepGenerate    = document.getElementById('stepGenerate');
 
 const lines           = document.querySelectorAll('.upload-progress__line');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let fileRaw       = null;
-let fileCumulated = null;
+let fileRaw = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,41 +55,29 @@ function showToast(msg) {
 
 function updateProgress() {
   const hasRaw = !!fileRaw;
-  const hasCum = !!fileCumulated;
-  const both   = hasRaw && hasCum;
 
   // Step: Raw
   stepRaw.classList.toggle('done',   hasRaw);
   stepRaw.classList.toggle('active', !hasRaw);
 
-  // Step: Cumulated
-  stepCumulated.classList.toggle('done',   hasCum);
-  stepCumulated.classList.toggle('active', !hasCum && hasRaw);
-
   // Step: Generate
-  stepGenerate.classList.toggle('active', both);
+  stepGenerate.classList.toggle('active', hasRaw);
   stepGenerate.classList.remove('done');
 
-  // Lines
+  // Line
   lines[0].classList.toggle('done',   hasRaw);
   lines[0].classList.toggle('active', !hasRaw);
-  lines[1].classList.toggle('done',   both);
-  lines[1].classList.toggle('active', hasCum && !both);
 
   // Button
-  btnGenerate.disabled = !both;
-  generateHint.textContent = both
-    ? 'Both files ready — click to generate your PDF report.'
-    : !hasRaw && !hasCum
-      ? 'Please upload both CSV files to enable report generation.'
-      : !hasRaw
-        ? 'Please upload the Raw CSV file.'
-        : 'Please upload the Cumulated CSV file.';
+  btnGenerate.disabled = !hasRaw;
+  generateHint.textContent = hasRaw
+    ? 'Raw file ready — click to generate your PDF report. Cumulative metrics will be computed automatically.'
+    : 'Please upload the raw fixations CSV file to enable report generation.';
 }
 
 // ─── File selection ───────────────────────────────────────────────────────────
 
-function setFile(type, file) {
+function setFile(file) {
   if (!file) return;
 
   if (!file.name.endsWith('.csv')) {
@@ -119,65 +90,39 @@ function setFile(type, file) {
     return;
   }
 
-  if (type === 'raw') {
-    fileRaw = file;
-    filenameRaw.textContent  = file.name;
-    filesizeRaw.textContent  = formatBytes(file.size);
-    labelRaw.hidden          = true;
-    previewRaw.hidden        = false;
-    zoneRaw.classList.add('has-file');
-  } else {
-    fileCumulated = file;
-    filenameCumulated.textContent = file.name;
-    filesizeCumulated.textContent = formatBytes(file.size);
-    labelCumulated.hidden         = true;
-    previewCumulated.hidden       = false;
-    zoneCumulated.classList.add('has-file');
-  }
+  fileRaw = file;
+  filenameRaw.textContent  = file.name;
+  filesizeRaw.textContent  = formatBytes(file.size);
+  labelRaw.hidden          = true;
+  previewRaw.hidden        = false;
+  zoneRaw.classList.add('has-file');
 
   updateProgress();
 }
 
-function clearFile(type) {
-  if (type === 'raw') {
-    fileRaw                  = null;
-    inputRaw.value           = '';
-    labelRaw.hidden          = false;
-    previewRaw.hidden        = true;
-    zoneRaw.classList.remove('has-file');
-  } else {
-    fileCumulated            = null;
-    inputCumulated.value     = '';
-    labelCumulated.hidden    = false;
-    previewCumulated.hidden  = true;
-    zoneCumulated.classList.remove('has-file');
-  }
+function clearFile() {
+  fileRaw                  = null;
+  inputRaw.value           = '';
+  labelRaw.hidden          = false;
+  previewRaw.hidden        = true;
+  zoneRaw.classList.remove('has-file');
   updateProgress();
 }
 
 // ─── Input change listeners ───────────────────────────────────────────────────
 
 inputRaw.addEventListener('change', () => {
-  if (inputRaw.files[0]) setFile('raw', inputRaw.files[0]);
-});
-
-inputCumulated.addEventListener('change', () => {
-  if (inputCumulated.files[0]) setFile('cumulated', inputCumulated.files[0]);
+  if (inputRaw.files[0]) setFile(inputRaw.files[0]);
 });
 
 removeRaw.addEventListener('click', (e) => {
   e.preventDefault();
-  clearFile('raw');
-});
-
-removeCumulated.addEventListener('click', (e) => {
-  e.preventDefault();
-  clearFile('cumulated');
+  clearFile();
 });
 
 // ─── Drag & drop ──────────────────────────────────────────────────────────────
 
-function setupDragDrop(zone, type) {
+function setupDragDrop(zone) {
   zone.addEventListener('dragover', (e) => {
     e.preventDefault();
     zone.classList.add('drag-over');
@@ -191,12 +136,11 @@ function setupDragDrop(zone, type) {
     e.preventDefault();
     zone.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
-    if (file) setFile(type, file);
+    if (file) setFile(file);
   });
 }
 
-setupDragDrop(zoneRaw, 'raw');
-setupDragDrop(zoneCumulated, 'cumulated');
+setupDragDrop(zoneRaw);
 
 // ─── Loading animation ────────────────────────────────────────────────────────
 
@@ -236,7 +180,7 @@ function stopLoadingAnimation() {
 // ─── Generate ─────────────────────────────────────────────────────────────────
 
 btnGenerate.addEventListener('click', async () => {
-  if (!fileRaw || !fileCumulated) return;
+  if (!fileRaw) return;
 
   // Hide previous result
   resultCard.hidden = true;
@@ -245,7 +189,6 @@ btnGenerate.addEventListener('click', async () => {
 
   const formData = new FormData();
   formData.append('raw', fileRaw);
-  formData.append('cumulated', fileCumulated);
 
   try {
     const res = await fetch('/api/generate', {
@@ -284,7 +227,7 @@ btnGenerate.addEventListener('click', async () => {
     // Mark generate step as done
     stepGenerate.classList.remove('active');
     stepGenerate.classList.add('done');
-    lines[1].classList.add('done');
+    if (lines[0]) lines[0].classList.add('done');
 
     resultCard.hidden = false;
     resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -298,8 +241,7 @@ btnGenerate.addEventListener('click', async () => {
 // ─── Reset ────────────────────────────────────────────────────────────────────
 
 btnReset.addEventListener('click', () => {
-  clearFile('raw');
-  clearFile('cumulated');
+  clearFile();
   resultCard.hidden = true;
   stepGenerate.classList.remove('done', 'active');
   window.scrollTo({ top: 0, behavior: 'smooth' });

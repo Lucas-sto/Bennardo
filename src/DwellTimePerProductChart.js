@@ -1,6 +1,7 @@
 'use strict';
 
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 const WIDTH  = 900;
 const HEIGHT = 500;
@@ -49,7 +50,8 @@ class DwellTimePerProductChart {
    * @returns {Promise<Buffer>}  PNG image buffer
    */
   async render(rows) {
-    const dwellMap = this._sumDwellPerProduct(rows);
+    const calculator = new CumulativeStatsCalculator();
+    const dwellMap = calculator.dwellTimePerProduct(rows);
     const products = Object.keys(dwellMap).sort();
     const values   = products.map((p) => dwellMap[p]);
 
@@ -112,21 +114,6 @@ class DwellTimePerProductChart {
     });
   }
 
-  /**
-   * Groups rows by Target_Product and sums the Duration column.
-   * @param {object[]} rows
-   * @returns {{ [product: string]: number }}
-   */
-  _sumDwellPerProduct(rows) {
-    const totals = {};
-    for (const row of rows) {
-      const product  = row['Target_Product'];
-      const duration = parseFloat(row['Duration']);
-      if (!product || isNaN(duration)) continue;
-      totals[product] = (totals[product] || 0) + duration;
-    }
-    return totals;
-  }
 }
 
 module.exports = DwellTimePerProductChart;

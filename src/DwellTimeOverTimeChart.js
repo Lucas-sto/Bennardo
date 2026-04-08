@@ -1,6 +1,7 @@
 'use strict';
 
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 const WIDTH  = 900;
 const HEIGHT = 500;
@@ -51,8 +52,8 @@ class DwellTimeOverTimeChart {
    * @param {number}   [opts.bucketSizeMs=10000]  Width of each time bucket in ms
    * @returns {Promise<Buffer>}  PNG image buffer
    */
-  async render(rows, { bucketSizeMs = 10000 } = {}) {
-    const { timeLabels, series } = this._buildSeries(rows, bucketSizeMs);
+  async render(rows) {
+    const { timeLabels, series } = this._buildSeries(rows);
 
     const datasets = series.map((s, i) => ({
       label: s.product,
@@ -74,14 +75,14 @@ class DwellTimeOverTimeChart {
         plugins: {
           title: {
             display: true,
-            text: 'Dwell Time per Product over Time',
+            text: 'Cumulative Dwell Time per Product over Time',
             font: { size: 20, weight: 'bold' },
             color: '#1a1a2e',
             padding: { top: 10, bottom: 6 },
           },
           subtitle: {
             display: true,
-            text: `Intra-Product Analysis  ·  Source: Raw Fixation Data  ·  Bucket size: ${bucketSizeMs / 1000} s`,
+            text: 'Intra-Product Analysis  ·  Source: Raw Fixation Data  ·  Cumulative from session start',
             font: { size: 11 },
             color: '#4F81BD',
             padding: { bottom: 14 },
@@ -127,37 +128,23 @@ class DwellTimeOverTimeChart {
    * @param {number}   bucketSizeMs
    * @returns {{ timeLabels: string[], series: { product: string, values: number[] }[] }}
    */
-  _buildSeries(rows, bucketSizeMs) {
+  _buildSeries(rows) {
     if (!rows.length) return { timeLabels: [], series: [] };
 
-    const timestamps = rows.map((r) => parseFloat(r['Start_ts'])).filter((v) => !isNaN(v));
-    const minTs = Math.min(...timestamps);
-    const maxTs = Math.max(...timestamps);
+    const lastSecond = Math.ceil(Math.max(...rows.map((r) => parseFloat(r['End_ts']) || 0)) / 1000);
+    const products   = [...new Set(rows.map((r) => r['Target_Product']).filter(Boolean))].sort();
+    const calculator = new CumulativeStatsCalculator();
 
-    const numBuckets = Math.ceil((maxTs - minTs + 1) / bucketSizeMs);
-
-    const products = [...new Set(rows.map((r) => r['Target_Product']).filter(Boolean))].sort();
-
-    // Build bucket matrix: dwell[product][bucketIdx] = sum of Duration
-    const dwell = {};
-    products.forEach((p) => { dwell[p] = new Array(numBuckets).fill(0); });
-
-    rows.forEach((row) => {
-      const product  = row['Target_Product'];
-      const ts       = parseFloat(row['Start_ts']);
-      const duration = parseFloat(row['Duration']);
-      if (!product || isNaN(ts) || isNaN(duration)) return;
-      const bucketIdx = Math.min(Math.floor((ts - minTs) / bucketSizeMs), numBuckets - 1);
-      dwell[product][bucketIdx] += duration;
+    const series = products.map((p) => {
+      const values = [];
+      for (let s = 1; s <= lastSecond; s++) {
+        const dwell = calculator.dwellTimePerProduct(rows, s * 1000);
+        values.push(dwell[p] || 0);
+      }
+      return { product: p, values };
     });
 
-    const timeLabels = Array.from({ length: numBuckets }, (_, i) => {
-      const secStart = Math.round((minTs + i * bucketSizeMs) / 1000);
-      const secEnd   = Math.round((minTs + (i + 1) * bucketSizeMs) / 1000);
-      return `${secStart}–${secEnd}s`;
-    });
-
-    const series = products.map((p) => ({ product: p, values: dwell[p] }));
+    const timeLabels = Array.from({ length: lastSecond }, (_, i) => `${i + 1}s`);
 
     return { timeLabels, series };
   }

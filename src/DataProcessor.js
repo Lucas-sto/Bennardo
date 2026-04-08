@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const { parse } = require('csv-parse/sync');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 /**
  * DataProcessor
@@ -48,6 +49,33 @@ class DataProcessor {
 
   loadCumulated(filePath) {
     this.cumulatedData = this._readCSV(filePath);
+    return this;
+  }
+
+  /**
+   * Generate cumulated data from raw fixation data.
+   * Computes metrics for each second from 1 to the last second in the data.
+   * @returns {DataProcessor} this
+   */
+  generateCumulatedData() {
+    if (!this.rawData || this.rawData.length === 0) {
+      this.cumulatedData = [];
+      return this;
+    }
+
+    const calculator = new CumulativeStatsCalculator();
+    
+    // Find the last timestamp in milliseconds
+    const lastTimestamp = Math.max(...this.rawData.map(f => f.End_ts || 0));
+    const lastSecond = Math.ceil(lastTimestamp / 1000);
+    
+    // Generate cumulative data for each second
+    const cumulatedRows = [];
+    for (let second = 1; second <= lastSecond; second++) {
+      cumulatedRows.push(calculator.computeAll(this.rawData, second));
+    }
+    
+    this.cumulatedData = cumulatedRows;
     return this;
   }
 

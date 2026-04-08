@@ -1,6 +1,7 @@
 'use strict';
 
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 const WIDTH  = 900;
 const HEIGHT = 500;
@@ -52,34 +53,8 @@ class MaxRevisitChart {
    * @returns {Promise<Buffer>}  PNG image buffer
    */
   async render(rows) {
-    // Sort by Start_ts
-    const sorted = [...rows].sort(
-      (a, b) => parseFloat(a['Start_ts']) - parseFloat(b['Start_ts']),
-    );
-
-    // Count revisits per product
-    const visited  = new Set();
-    const revisits = {};
-    let lastProduct = null;
-
-    for (const row of sorted) {
-      const product = (row['Target_Product'] || '').trim();
-      if (!product) continue;
-      if (product === lastProduct) continue; // still on same product
-
-      if (visited.has(product)) {
-        revisits[product] = (revisits[product] || 0) + 1;
-      } else {
-        visited.add(product);
-        revisits[product] = 0;
-      }
-      lastProduct = product;
-    }
-
-    // Ensure all visited products appear (even with 0 revisits)
-    for (const p of visited) {
-      if (!(p in revisits)) revisits[p] = 0;
-    }
+    const calculator = new CumulativeStatsCalculator();
+    const revisits   = calculator.revisitsPerProduct(rows);
 
     // Sort by revisit count descending
     const sorted_products = Object.entries(revisits).sort((a, b) => b[1] - a[1]);

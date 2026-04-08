@@ -29,7 +29,7 @@ class PDFGenerator {
     this.doc = new PDFDocument({
       size: 'A4',
       layout: 'landscape',
-      margins: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN },
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
       info: {
         Title: 'EyeTracking Dashboard – Shopping Advisors',
         Author: 'EyeTracking Dashboard',

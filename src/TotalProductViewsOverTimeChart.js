@@ -14,13 +14,13 @@ const rgba = (hex, a) => {
 };
 
 /**
- * UniqueProductsOverTimeChart
- * ───────────────────────────
+ * TotalProductViewsOverTimeChart
+ * ──────────────────────────────
  * Inter-Product Specific
  *
- * Cumulative count of unique products viewed over time.
+ * Cumulative total product views (including revisits) over time.
  */
-class UniqueProductsOverTimeChart {
+class TotalProductViewsOverTimeChart {
   constructor(width = WIDTH, height = HEIGHT) {
     this._canvas = new ChartJSNodeCanvas({ width, height, backgroundColour: '#ffffff' });
   }
@@ -28,14 +28,14 @@ class UniqueProductsOverTimeChart {
   async render(fixations) {
     if (!fixations || fixations.length === 0) return this._renderEmpty();
 
-    const calculator  = new CumulativeStatsCalculator();
-    const lastSecond  = Math.ceil(Math.max(...fixations.map(f => f.End_ts || 0)) / 1000);
-    const labels      = [];
-    const values      = [];
+    const calculator = new CumulativeStatsCalculator();
+    const lastSecond = Math.ceil(Math.max(...fixations.map(f => f.End_ts || 0)) / 1000);
+    const labels     = [];
+    const values     = [];
 
     for (let s = 1; s <= lastSecond; s++) {
       labels.push(`${s}s`);
-      values.push(calculator.numberOfDifferentProducts(fixations, s * 1000));
+      values.push(calculator.numberOfProducts(fixations, s * 1000));
     }
 
     return this._canvas.renderToBuffer({
@@ -43,10 +43,10 @@ class UniqueProductsOverTimeChart {
       data: {
         labels,
         datasets: [{
-          label: 'Unique Products Viewed',
+          label: 'Total Product Views',
           data: values,
-          borderColor:     '#4F81BD',
-          backgroundColor: rgba('#4F81BD', 0.10),
+          borderColor:     '#C0504D',
+          backgroundColor: rgba('#C0504D', 0.10),
           borderWidth: 2.5,
           pointRadius: 3,
           pointHoverRadius: 6,
@@ -59,14 +59,14 @@ class UniqueProductsOverTimeChart {
         plugins: {
           title: {
             display: true,
-            text: 'Cumulative Unique Products Viewed over Time',
+            text: 'Cumulative Total Product Views over Time',
             font: { size: 20, weight: 'bold' },
             color: '#1a1a2e',
             padding: { top: 10, bottom: 6 },
           },
           subtitle: {
             display: true,
-            text: 'Inter-Product Analysis  ·  Source: Raw Fixation Data  ·  Cumulative distinct products seen',
+            text: 'Inter-Product Analysis  ·  Source: Raw Fixation Data  ·  Cumulative product views including revisits',
             font: { size: 11 },
             color: '#4F81BD',
             padding: { bottom: 14 },
@@ -80,7 +80,7 @@ class UniqueProductsOverTimeChart {
             grid: { color: 'rgba(0,0,0,0.04)' },
           },
           y: {
-            title: { display: true, text: 'Unique Products', font: { size: 13, weight: '600' }, color: '#333' },
+            title: { display: true, text: 'Total Views', font: { size: 13, weight: '600' }, color: '#333' },
             beginAtZero: true,
             ticks: { font: { size: 11 }, color: '#555', precision: 0 },
             grid: { color: 'rgba(0,0,0,0.06)' },
@@ -94,9 +94,9 @@ class UniqueProductsOverTimeChart {
     return this._canvas.renderToBuffer({
       type: 'line',
       data: { labels: ['No data'], datasets: [] },
-      options: { responsive: false, plugins: { title: { display: true, text: 'Cumulative Unique Products Viewed over Time', font: { size: 20, weight: 'bold' } } } },
+      options: { responsive: false, plugins: { title: { display: true, text: 'Cumulative Total Product Views over Time', font: { size: 20, weight: 'bold' } } } },
     });
   }
 }
 
-module.exports = UniqueProductsOverTimeChart;
+module.exports = TotalProductViewsOverTimeChart;

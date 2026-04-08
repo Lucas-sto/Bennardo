@@ -1,6 +1,7 @@
 'use strict';
 
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 const WIDTH  = 900;
 const HEIGHT = 500;
@@ -50,7 +51,8 @@ class FixationsPerProductChart {
    * @returns {Promise<Buffer>}  PNG image buffer
    */
   async render(rows) {
-    const counts = this._countFixationsPerProduct(rows);
+    const calculator = new CumulativeStatsCalculator();
+    const counts = calculator.fixationsPerProduct(rows);
     const products = Object.keys(counts).sort();
     const values   = products.map((p) => counts[p]);
 
@@ -113,20 +115,6 @@ class FixationsPerProductChart {
     });
   }
 
-  /**
-   * Groups rows by Target_Product and counts occurrences.
-   * @param {object[]} rows
-   * @returns {{ [product: string]: number }}
-   */
-  _countFixationsPerProduct(rows) {
-    const counts = {};
-    for (const row of rows) {
-      const product = row['Target_Product'];
-      if (!product) continue;
-      counts[product] = (counts[product] || 0) + 1;
-    }
-    return counts;
-  }
 }
 
 module.exports = FixationsPerProductChart;

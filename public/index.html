@@ -37,9 +37,10 @@
       <!-- Hero section -->
       <section class="hero">
         <p class="hero__text">
-          Upload your eye-tracking CSV exports below. Once both files are
-          selected, click <strong>Generate PDF Report</strong> to produce a
-          full analysis with 6 charts embedded in a branded A4 landscape PDF.
+          Upload your eye-tracking raw fixation CSV file below. All cumulative metrics 
+          will be automatically computed from the raw data. 
+          Click <strong>Generate PDF Report</strong> to produce a full analysis 
+          with charts embedded in a branded A4 landscape PDF.
         </p>
       </section>
 
@@ -56,7 +57,7 @@
 
         <div class="upload-grid">
           <!-- Raw upload -->
-          <div class="upload-zone" id="zoneRaw">
+          <div class="upload-zone" id="zoneRaw" style="grid-column: 1 / -1;">
             <input type="file" id="inputRaw" accept=".csv" hidden />
             <label for="inputRaw" class="upload-zone__label" id="labelRaw">
               <div class="upload-zone__icon">
@@ -67,7 +68,7 @@
                   <line x1="9" y1="15" x2="15" y2="15"/>
                 </svg>
               </div>
-              <span class="upload-zone__tag">1. Upload Raw</span>
+              <span class="upload-zone__tag">Upload Raw Fixations CSV</span>
               <span class="upload-zone__hint">Drag &amp; drop or click to browse</span>
               <span class="upload-zone__format">.csv files only · max 50 MB</span>
             </label>
@@ -82,46 +83,13 @@
               <button class="btn-remove" id="removeRaw" title="Remove file">✕</button>
             </div>
           </div>
-
-          <!-- Cumulated upload -->
-          <div class="upload-zone" id="zoneCumulated">
-            <input type="file" id="inputCumulated" accept=".csv" hidden />
-            <label for="inputCumulated" class="upload-zone__label" id="labelCumulated">
-              <div class="upload-zone__icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="12" y1="18" x2="12" y2="12"/>
-                  <line x1="9" y1="15" x2="15" y2="15"/>
-                </svg>
-              </div>
-              <span class="upload-zone__tag">2. Upload Cumulated</span>
-              <span class="upload-zone__hint">Drag &amp; drop or click to browse</span>
-              <span class="upload-zone__format">.csv files only · max 50 MB</span>
-            </label>
-            <div class="upload-zone__preview" id="previewCumulated" hidden>
-              <svg class="icon icon--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              <div class="upload-zone__preview-info">
-                <span class="upload-zone__filename" id="filenameCumulated"></span>
-                <span class="upload-zone__filesize" id="filesizeCumulated"></span>
-              </div>
-              <button class="btn-remove" id="removeCumulated" title="Remove file">✕</button>
-            </div>
-          </div>
         </div>
 
         <!-- Progress indicator -->
         <div class="upload-progress">
           <div class="upload-progress__step" id="stepRaw">
             <div class="upload-progress__dot" id="dotRaw"></div>
-            <span>Raw data</span>
-          </div>
-          <div class="upload-progress__line"></div>
-          <div class="upload-progress__step" id="stepCumulated">
-            <div class="upload-progress__dot" id="dotCumulated"></div>
-            <span>Cumulated data</span>
+            <span>Upload raw data</span>
           </div>
           <div class="upload-progress__line"></div>
           <div class="upload-progress__step" id="stepGenerate">
@@ -141,7 +109,7 @@
             Generate PDF Report
           </button>
           <p class="generate-hint" id="generateHint">
-            Please upload both CSV files to enable report generation.
+            Please upload the raw fixations CSV file to enable report generation.
           </p>
         </div>
       </section>
@@ -207,49 +175,113 @@
           <div class="chart-info">
             <div class="chart-info__num">01</div>
             <div class="chart-info__body">
-              <strong>Fixation Duration Distribution</strong>
-              <span>Bar chart · Raw data</span>
-              <p>Buckets fixation durations (ms) to reveal attention patterns.</p>
+              <strong>Fixations per Product</strong>
+              <span>Bar chart · Intra-Product · Raw data</span>
+              <p>Total fixation count per product across the entire session.</p>
             </div>
           </div>
           <div class="chart-info">
             <div class="chart-info__num">02</div>
             <div class="chart-info__body">
-              <strong>Gaze Point Distribution</strong>
-              <span>Scatter plot · Raw data</span>
-              <p>X/Y gaze coordinates showing spatial attention clusters.</p>
+              <strong>Dwell Time per Product</strong>
+              <span>Bar chart · Intra-Product · Raw data</span>
+              <p>Total dwell time (sum of fixation durations in ms) per product.</p>
             </div>
           </div>
           <div class="chart-info">
             <div class="chart-info__num">03</div>
             <div class="chart-info__body">
-              <strong>AOI Dwell Time</strong>
-              <span>Doughnut chart · Cumulated data</span>
-              <p>Proportion of dwell time per Area of Interest.</p>
+              <strong>Fixations per Product over Time</strong>
+              <span>Line chart · Intra-Product · Raw data</span>
+              <p>Fixation counts per product in 10-second time buckets.</p>
             </div>
           </div>
           <div class="chart-info">
             <div class="chart-info__num">04</div>
             <div class="chart-info__body">
-              <strong>Time Series</strong>
-              <span>Line chart · Raw data</span>
-              <p>Key metric sampled over the full recording session.</p>
+              <strong>Dwell Time per Product over Time</strong>
+              <span>Line chart · Intra-Product · Raw data</span>
+              <p>Total dwell time (ms) per product in 10-second time buckets.</p>
             </div>
           </div>
           <div class="chart-info">
             <div class="chart-info__num">05</div>
             <div class="chart-info__body">
-              <strong>Raw vs. Cumulated Comparison</strong>
-              <span>Grouped bar · Both datasets</span>
-              <p>Average column values compared side-by-side.</p>
+              <strong>Percentage Looked at Product Features</strong>
+              <span>Pie chart · Inter-Product · Raw data</span>
+              <p>Share of fixations on each product feature: Price · Brand · Details.</p>
             </div>
           </div>
           <div class="chart-info">
             <div class="chart-info__num">06</div>
             <div class="chart-info__body">
-              <strong>Fixation Count per Category</strong>
-              <span>Horizontal bar · Cumulated data</span>
-              <p>Fixation counts broken down by category or participant.</p>
+              <strong>Pupil Dilation per Product</strong>
+              <span>Table · Inter-Product · Raw data</span>
+              <p>Average pupil dilation values broken down per product.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">07</div>
+            <div class="chart-info__body">
+              <strong>Product Comparison Behaviour</strong>
+              <span>Table · Inter-Product · Raw data</span>
+              <p>Top product pairs involved in A→B→A comparison sequences, plus total comparison events detected across the full session.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">08</div>
+            <div class="chart-info__body">
+              <strong>Cumulative Unique Products Viewed over Time</strong>
+              <span>Line chart · Inter-Product · Raw data</span>
+              <p>Cumulative count of distinct products seen from session start.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">09</div>
+            <div class="chart-info__body">
+              <strong>Cumulative Total Product Views over Time</strong>
+              <span>Line chart · Inter-Product · Raw data</span>
+              <p>Cumulative total product views including revisits from session start.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">10</div>
+            <div class="chart-info__body">
+              <strong>Rolling Mean Saccade Speed over Time</strong>
+              <span>Line chart · Inter-Product · Raw data</span>
+              <p>Mean saccade speed computed over a rolling 10-second window. Orange dots = last 10 seconds.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">11</div>
+            <div class="chart-info__body">
+              <strong>Average Fixation Duration over Time</strong>
+              <span>Line chart · Inter-Product · Raw data</span>
+              <p>Cumulative mean and rolling 10-second window average fixation duration (ms) shown as two lines.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">12</div>
+            <div class="chart-info__body">
+              <strong>Variance of Fixation Duration over Time</strong>
+              <span>Line chart · Inter-Product · Raw data</span>
+              <p>Cumulative variance and rolling 10-second window variance of fixation duration (ms²) shown as two lines.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">13</div>
+            <div class="chart-info__body">
+              <strong>Variance of Total Visit Duration per Product over Time</strong>
+              <span>Line chart · Inter-Product · Raw data</span>
+              <p>Cumulative variance and rolling 10-second window variance of total visit duration (ms²) per product shown as two lines.</p>
+            </div>
+          </div>
+          <div class="chart-info">
+            <div class="chart-info__num">14</div>
+            <div class="chart-info__body">
+              <strong>Max Revisit per Product</strong>
+              <span>Horizontal bar · Inter-Product · Raw data</span>
+              <p>Number of times each product was revisited. Gold bar = most revisited product.</p>
             </div>
           </div>
         </div>

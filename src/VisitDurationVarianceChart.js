@@ -1,6 +1,7 @@
 'use strict';
 
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
 
 const WIDTH  = 900;
 const HEIGHT = 500;
@@ -17,7 +18,7 @@ const rgba = (hex, a) => {
  * ──────────────────────────
  * Inter-Product Specific
  *
- * Reads cumulative data (table2_cumulative.csv) and renders a line chart
+ * Computes and renders a line chart from raw fixation data
  * showing Variance_TotalVisitDuration over time.
  *
  * The last 10 seconds are highlighted with orange dots.
@@ -25,10 +26,10 @@ const rgba = (hex, a) => {
  *
  * Usage:
  *   const chart = new VisitDurationVarianceChart();
- *   const buffer = await chart.render(cumRows);
+ *   const buffer = await chart.render(rawFixations);
  *
- * Expected row shape:
- *   { Second: 95, Variance_TotalVisitDuration: 116918152.57, … }
+ * Expected row shape (raw fixations):
+ *   { Fixation_ID, Start_ts, End_ts, Duration, Target_Product, ... }
  */
 class VisitDurationVarianceChart {
   constructor(width = WIDTH, height = HEIGHT) {
@@ -40,73 +41,75 @@ class VisitDurationVarianceChart {
   }
 
   /**
-   * @param {object[]} rows  Parsed rows from table2_cumulative.csv
+   * @param {object[]} fixations  Raw fixation data
    * @returns {Promise<Buffer>}  PNG image buffer
    */
-  async render(rows) {
-    const sorted = [...rows].sort(
-      (a, b) => parseFloat(a['Second']) - parseFloat(b['Second']),
-    );
+  async render(fixations) {
+    if (!fixations || fixations.length === 0) {
+      return this._renderEmpty();
+    }
 
-    const LAST_N = 10;
-    const n      = sorted.length;
-    const cutoff = n - LAST_N;
+    const calculator = new CumulativeStatsCalculator();
+    const lastSecond = Math.ceil(Math.max(...fixations.map(f => f.End_ts || 0)) / 1000);
+    const labels     = [];
+    const cumulative = [];
+    const rolling    = [];
 
-    const labels   = sorted.map((r) => `${r['Second']}s`);
-    const variance = sorted.map((r) => parseFloat(r['Variance_TotalVisitDuration']) || 0);
+    for (let s = 1; s <= lastSecond; s++) {
+      labels.push(`${s}s`);
+      cumulative.push(calculator.varianceTotalVisitDuration(fixations, s * 1000));
+      rolling.push(calculator.rollingVarianceTotalVisitDuration(fixations, s * 1000));
+    }
 
-    // Trend: % change over last 10 s
-    const valNow    = variance[n - 1]              ?? 0;
-    const val10sAgo = variance[Math.max(0, cutoff)] ?? valNow;
-    const trendPct  = val10sAgo !== 0
-      ? (((valNow - val10sAgo) / val10sAgo) * 100).toFixed(1)
-      : '0.0';
-    const trendArrow = parseFloat(trendPct) > 0 ? '▲' : parseFloat(trendPct) < 0 ? '▼' : '→';
-
-    // Format large numbers for display (millions → M)
-    const fmt = (v) => {
-      if (v >= 1e6)  return `${(v / 1e6).toFixed(2)} M`;
-      if (v >= 1e3)  return `${(v / 1e3).toFixed(1)} k`;
-      return v.toFixed(2);
+    const fmtTick = (v) => {
+      if (v >= 1e6) return `${(v / 1e6).toFixed(0)}M`;
+      if (v >= 1e3) return `${(v / 1e3).toFixed(0)}k`;
+      return v;
     };
-    const trendLabel = `Current: ${fmt(valNow)}  ${trendArrow} ${trendPct}% vs. 10 s ago`;
-
-    // Highlight last LAST_N points in orange
-    const pointColors = variance.map((_, i) =>
-      i >= cutoff ? '#F79646' : rgba('#4BACC6', 0.7),
-    );
-    const pointRadius = variance.map((_, i) => (i >= cutoff ? 5 : 2));
 
     return this._canvas.renderToBuffer({
       type: 'line',
       data: {
         labels,
-        datasets: [{
-          label: 'Variance of Total Visit Duration',
-          data: variance,
-          borderColor:     '#4BACC6',
-          backgroundColor: rgba('#4BACC6', 0.10),
-          borderWidth: 2.5,
-          pointRadius,
-          pointBackgroundColor: pointColors,
-          pointHoverRadius: 6,
-          fill: true,
-          tension: 0.3,
-        }],
+        datasets: [
+          {
+            label: 'Cumulative Variance (ms²)',
+            data: cumulative,
+            borderColor:     '#4BACC6',
+            backgroundColor: rgba('#4BACC6', 0.06),
+            borderWidth:     2,
+            pointRadius:     2,
+            pointHoverRadius: 5,
+            fill:            false,
+            tension:         0.3,
+          },
+          {
+            label: 'Rolling 10 s Variance (ms²)',
+            data: rolling,
+            borderColor:     '#C0504D',
+            backgroundColor: rgba('#C0504D', 0.08),
+            borderWidth:     2,
+            pointRadius:     2,
+            pointHoverRadius: 5,
+            fill:            false,
+            tension:         0.3,
+            borderDash:      [5, 3],
+          },
+        ],
       },
       options: {
         responsive: false,
         plugins: {
           title: {
             display: true,
-            text: 'Variance across Total Visit Duration per Product over Time',
+            text: 'Variance of Total Visit Duration per Product over Time',
             font: { size: 20, weight: 'bold' },
             color: '#1a1a2e',
             padding: { top: 10, bottom: 4 },
           },
           subtitle: {
             display: true,
-            text: `Inter-Product  ·  Source: Cumulative Data  ·  ${trendLabel}  ·  Orange dots = last 10 s`,
+            text: 'Inter-Product  ·  Raw Fixation Data  ·  Blue: cumulative variance  ·  Red dashed: rolling 10 s window',
             font: { size: 11 },
             color: '#4BACC6',
             padding: { bottom: 12 },
@@ -119,33 +122,32 @@ class VisitDurationVarianceChart {
         },
         scales: {
           x: {
-            title: {
-              display: true,
-              text: 'Time (s)',
-              font: { size: 13, weight: '600' },
-              color: '#333',
-            },
+            title: { display: true, text: 'Time (s)', font: { size: 13, weight: '600' }, color: '#333' },
             ticks: { font: { size: 9 }, color: '#333', maxTicksLimit: 20 },
             grid: { color: 'rgba(0,0,0,0.04)' },
           },
           y: {
-            title: {
-              display: true,
-              text: 'Variance (ms²)',
-              font: { size: 13, weight: '600' },
-              color: '#4BACC6',
-            },
+            title: { display: true, text: 'Variance (ms²)', font: { size: 13, weight: '600' }, color: '#333' },
             beginAtZero: true,
-            ticks: {
-              font: { size: 10 },
-              color: '#4BACC6',
-              callback: (v) => {
-                if (v >= 1e6) return `${(v / 1e6).toFixed(0)}M`;
-                if (v >= 1e3) return `${(v / 1e3).toFixed(0)}k`;
-                return v;
-              },
-            },
+            ticks: { font: { size: 10 }, color: '#555', callback: fmtTick },
             grid: { color: 'rgba(0,0,0,0.06)' },
+          },
+        },
+      },
+    });
+  }
+
+  async _renderEmpty() {
+    return this._canvas.renderToBuffer({
+      type: 'line',
+      data: { labels: ['No data'], datasets: [] },
+      options: {
+        responsive: false,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Variance across Total Visit Duration per Product over Time',
+            font: { size: 20, weight: 'bold' },
           },
         },
       },
