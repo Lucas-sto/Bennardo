@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 const DataProcessor = require('./src/DataProcessor');
+const CumulativeStatsCalculator = require('./src/CumulativeStatsCalculator');
 const PDFGenerator = require('./src/PDFGenerator');
 const FixationsPerProductChart = require('./src/FixationsPerProductChart');
 const DwellTimePerProductChart = require('./src/DwellTimePerProductChart');
@@ -63,10 +64,255 @@ const upload = multer({
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/output', express.static(OUTPUT_DIR));
 
+// ─── Helper functions for time-series computations ───────────────────────────
+
+function computeFixationsOverTime(rawData) {
+  if (!rawData.length) return {};
+  
+  const calculator = new CumulativeStatsCalculator();
+  const lastSecond = Math.ceil(Math.max(...rawData.map(r => r.End_ts || 0)) / 1000);
+  const products = [...new Set(rawData.map(r => r.Target_Product).filter(Boolean))].sort();
+  
+  const result = {};
+  for (let s = 1; s <= lastSecond; s++) {
+    const secondMs = s * 1000;
+    result[secondMs] = {};
+    const counts = calculator.fixationsPerProduct(rawData, secondMs);
+    products.forEach(p => {
+      result[secondMs][p] = counts[p] || 0;
+    });
+  }
+  
+  return result;
+}
+
+function computeDwellTimeOverTime(rawData) {
+  if (!rawData.length) return {};
+  
+  const calculator = new CumulativeStatsCalculator();
+  const lastSecond = Math.ceil(Math.max(...rawData.map(r => r.End_ts || 0)) / 1000);
+  const products = [...new Set(rawData.map(r => r.Target_Product).filter(Boolean))].sort();
+  
+  const result = {};
+  for (let s = 1; s <= lastSecond; s++) {
+    const secondMs = s * 1000;
+    result[secondMs] = {};
+    const dwells = calculator.dwellTimePerProduct(rawData, secondMs);
+    products.forEach(p => {
+      result[secondMs][p] = dwells[p] || 0;
+    });
+  }
+  
+  return result;
+}
+
+function computeFeatureOverTime(rawData, calculator) {
+  const buckets = {};
+  const bucketSize = 1000; // 1 second
+  
+  if (!rawData.length) return buckets;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    const aoi = calculator.dwellTimePerAOI(rawData, t);
+    const total = Object.values(aoi).reduce((s, v) => s + v, 0);
+    buckets[t] = {};
+    Object.entries(aoi).forEach(([key, val]) => {
+      buckets[t][key] = total > 0 ? (val / total) * 100 : 0;
+    });
+  }
+  
+  return buckets;
+}
+
+function computeUniqueProductsOverTime(rawData, calculator) {
+  const result = {};
+  const bucketSize = 1000;
+  
+  if (!rawData.length) return result;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    result[t] = calculator.numberOfDifferentProducts(rawData, t);
+  }
+  
+  return result;
+}
+
+function computeTotalViewsOverTime(rawData, calculator) {
+  const result = {};
+  const bucketSize = 1000;
+  
+  if (!rawData.length) return result;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    result[t] = calculator.numberOfProducts(rawData, t);
+  }
+  
+  return result;
+}
+
+function computeSaccadeSpeedOverTime(rawData, calculator) {
+  const result = {};
+  const bucketSize = 1000;
+  const windowSize = 10000; // 10-second rolling window
+  
+  if (!rawData.length) return result;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = windowSize; t <= lastTs; t += bucketSize) {
+    const window = calculator.getFixationsInWindow(rawData, t - windowSize, t);
+    result[t] = calculator.meanSaccadeSpeed(window);
+  }
+  
+  return result;
+}
+
+function computeAvgFixationOverTime(rawData, calculator) {
+  const result = { cumulative: {}, rolling: {} };
+  const bucketSize = 1000;
+  const windowSize = 10000;
+  
+  if (!rawData.length) return result;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    result.cumulative[t] = calculator.averageFixationDuration(rawData, t);
+    if (t >= windowSize) {
+      result.rolling[t] = calculator.rollingAverageFixationDuration(rawData, t, windowSize);
+    }
+  }
+  
+  return result;
+}
+
+function computeFixationVarianceOverTime(rawData, calculator) {
+  const result = { cumulative: {}, rolling: {} };
+  const bucketSize = 1000;
+  const windowSize = 10000;
+  
+  if (!rawData.length) return result;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    result.cumulative[t] = calculator.varianceFixationDuration(rawData, t);
+    if (t >= windowSize) {
+      result.rolling[t] = calculator.rollingVarianceFixationDuration(rawData, t, windowSize);
+    }
+  }
+  
+  return result;
+}
+
+function computeVisitVarianceOverTime(rawData, calculator) {
+  const result = { cumulative: {}, rolling: {} };
+  const bucketSize = 1000;
+  const windowSize = 10000;
+  
+  if (!rawData.length) return result;
+  
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    result.cumulative[t] = calculator.varianceTotalVisitDuration(rawData, t);
+    if (t >= windowSize) {
+      result.rolling[t] = calculator.rollingVarianceTotalVisitDuration(rawData, t, windowSize);
+    }
+  }
+  
+  return result;
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Process CSV and return chart data as JSON (for interactive chart viewer)
+app.post(
+  '/api/process',
+  upload.single('raw'),
+  async (req, res) => {
+    try {
+      const rawFile = req.file;
+
+      if (!rawFile) {
+        return res.status(400).json({ error: 'Raw CSV file is required.' });
+      }
+
+      // Parse CSV
+      const processor = new DataProcessor();
+      processor.loadRaw(rawFile.path);
+      const rawData = processor.rawData || [];
+
+      const calculator = new CumulativeStatsCalculator();
+
+      // Compute all chart datasets
+      const chartData = {
+        // Chart 1: Fixations per Product
+        fixationsPerProduct: calculator.fixationsPerProduct(rawData),
+        
+        // Chart 2: Dwell Time per Product
+        dwellTimePerProduct: calculator.dwellTimePerProduct(rawData),
+        
+        // Chart 3 & 4: Time series data (need to compute per time bucket)
+        fixationsOverTime: computeFixationsOverTime(rawData),
+        dwellTimeOverTime: computeDwellTimeOverTime(rawData),
+        
+        // Chart 5: Feature Distribution (AOI)
+        featureDistribution: calculator.dwellTimePerAOI(rawData),
+        
+        // Chart 6: Feature Distribution over Time
+        featureDistributionOverTime: computeFeatureOverTime(rawData, calculator),
+        
+        // Chart 7: Pupil Dilation Table
+        pupilDilation: calculator.pupilDilationPerProduct(rawData),
+        
+        // Chart 8: Product Comparison Table
+        productComparisons: {
+          pairs: calculator.topProductComparisons(rawData, Infinity, 10),
+          total: calculator.productComparisons(rawData),
+        },
+        
+        // Chart 9: Unique Products Over Time
+        uniqueProductsOverTime: computeUniqueProductsOverTime(rawData, calculator),
+        
+        // Chart 10: Total Product Views Over Time
+        totalProductViewsOverTime: computeTotalViewsOverTime(rawData, calculator),
+        
+        // Chart 11: Saccade Speed Over Time
+        saccadeSpeedOverTime: computeSaccadeSpeedOverTime(rawData, calculator),
+        
+        // Chart 12: Average Fixation Duration Over Time
+        avgFixationDurationOverTime: computeAvgFixationOverTime(rawData, calculator),
+        
+        // Chart 13: Fixation Variance Over Time
+        fixationVarianceOverTime: computeFixationVarianceOverTime(rawData, calculator),
+        
+        // Chart 14: Visit Duration Variance Over Time
+        visitVarianceOverTime: computeVisitVarianceOverTime(rawData, calculator),
+        
+        // Chart 15: Max Revisit per Product
+        maxRevisitPerProduct: calculator.revisitsPerProduct(rawData),
+      };
+
+      // Clean up uploaded file
+      fs.unlink(rawFile.path, () => {});
+
+      res.json({ success: true, data: chartData });
+    } catch (err) {
+      console.error('Processing error:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  }
+);
 
 // Upload raw CSV and generate PDF - cumulated data is automatically computed
 app.post(

@@ -31,6 +31,7 @@ const lines           = document.querySelectorAll('.upload-progress__line');
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let fileRaw = null;
+let chartDataProcessed = false;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ function updateProgress() {
 
 // ─── File selection ───────────────────────────────────────────────────────────
 
-function setFile(file) {
+async function setFile(file) {
   if (!file) return;
 
   if (!file.name.endsWith('.csv')) {
@@ -98,6 +99,9 @@ function setFile(file) {
   zoneRaw.classList.add('has-file');
 
   updateProgress();
+  
+  // Process chart data in background
+  await processChartData(file);
 }
 
 function clearFile() {
@@ -106,6 +110,7 @@ function clearFile() {
   labelRaw.hidden          = false;
   previewRaw.hidden        = true;
   zoneRaw.classList.remove('has-file');
+  disableChartButtons();
   updateProgress();
 }
 
@@ -247,6 +252,62 @@ btnReset.addEventListener('click', () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+// ─── Chart Data Processing ────────────────────────────────────────────────────
+
+async function processChartData(file) {
+  const formData = new FormData();
+  formData.append('raw', file);
+
+  try {
+    const res = await fetch('/api/process', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const result = await res.json();
+
+    if (!res.ok || !result.success) {
+      console.error('Chart data processing failed:', result.error);
+      return;
+    }
+
+    // Store chart data in sessionStorage
+    sessionStorage.setItem('chartData', JSON.stringify(result.data));
+    chartDataProcessed = true;
+
+    // Enable all "View Chart" buttons
+    enableChartButtons();
+
+  } catch (err) {
+    console.error('Chart data processing error:', err);
+  }
+}
+
+function enableChartButtons() {
+  const buttons = document.querySelectorAll('.btn-view-chart');
+  buttons.forEach(btn => {
+    btn.disabled = false;
+    btn.addEventListener('click', handleViewChart);
+  });
+}
+
+function disableChartButtons() {
+  const buttons = document.querySelectorAll('.btn-view-chart');
+  buttons.forEach(btn => {
+    btn.disabled = true;
+    btn.removeEventListener('click', handleViewChart);
+  });
+  chartDataProcessed = false;
+  sessionStorage.removeItem('chartData');
+}
+
+function handleViewChart(e) {
+  const chartId = e.target.dataset.chartId;
+  if (chartId && chartDataProcessed) {
+    window.open(`chart.html?chart=${chartId}`, '_blank');
+  }
+}
+
 // ─── Utility ──────────────────────────────────────────────────────────────────
 
 function escapeHtml(str) {
@@ -260,3 +321,9 @@ function escapeHtml(str) {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 updateProgress();
+
+// Check if chart data is already in sessionStorage
+if (sessionStorage.getItem('chartData')) {
+  chartDataProcessed = true;
+  enableChartButtons();
+}
