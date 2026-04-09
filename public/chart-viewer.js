@@ -1,5 +1,18 @@
 'use strict';
 
+// ─── Animation State ──────────────────────────────────────────────────────────
+
+const TIME_SERIES_CHARTS = new Set([3, 4, 6, 9, 10, 11, 12, 13, 14]);
+
+const animState = {
+  playing: false,
+  currentSecond: 0,
+  maxSecond: 0,
+  speed: 1,
+  timerId: null,
+  applyFn: null,      // Called with (second) on each animation tick
+};
+
 // ─── Color Palette ────────────────────────────────────────────────────────────
 
 const PALETTE = [
@@ -115,8 +128,10 @@ function renderChart(chartId, data) {
 
 function renderFixationsPerProduct(data) {
   const fixations = data.fixationsPerProduct || {};
+  const fixationsOT = data.fixationsOverTime || {};
   const products = Object.keys(fixations).sort();
   const values = products.map(p => fixations[p]);
+  const maxVal = Math.max(...values, 1);
 
   createChart({
     type: 'bar',
@@ -140,9 +155,17 @@ function renderFixationsPerProduct(data) {
       },
       scales: {
         x: { title: { display: true, text: 'Product' } },
-        y: { title: { display: true, text: 'Fixation Count' }, beginAtZero: true },
+        y: { title: { display: true, text: 'Fixation Count' }, beginAtZero: true, max: maxVal },
       },
     },
+  });
+
+  const { frameBySecond, maxSecond } = buildBarFrames(fixationsOT);
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    const frame = frameBySecond[second] || {};
+    chartInstance.data.datasets[0].data = products.map(p => frame[p] || 0);
+    chartInstance.update('none');
   });
 }
 
@@ -150,8 +173,10 @@ function renderFixationsPerProduct(data) {
 
 function renderDwellTimePerProduct(data) {
   const dwellTime = data.dwellTimePerProduct || {};
+  const dwellOT = data.dwellTimeOverTime || {};
   const products = Object.keys(dwellTime).sort();
   const values = products.map(p => dwellTime[p]);
+  const maxVal = Math.max(...values, 1);
 
   createChart({
     type: 'bar',
@@ -175,9 +200,17 @@ function renderDwellTimePerProduct(data) {
       },
       scales: {
         x: { title: { display: true, text: 'Product' } },
-        y: { title: { display: true, text: 'Total Dwell Time (ms)' }, beginAtZero: true },
+        y: { title: { display: true, text: 'Total Dwell Time (ms)' }, beginAtZero: true, max: maxVal },
       },
     },
+  });
+
+  const { frameBySecond, maxSecond } = buildBarFrames(dwellOT);
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    const frame = frameBySecond[second] || {};
+    chartInstance.data.datasets[0].data = products.map(p => frame[p] || 0);
+    chartInstance.update('none');
   });
 }
 
@@ -203,9 +236,14 @@ function renderTimeSeriesMultiProduct(buckets, yLabel) {
   times.forEach(t => Object.keys(buckets[t]).forEach(p => products.add(p)));
   const productList = Array.from(products).sort();
 
+  const fullDatasets = productList.map(product =>
+    times.map(t => ({ x: t / 1000, y: buckets[t][product] || 0 }))
+  );
+  const maxSecond = times.length > 0 ? Math.ceil(times[times.length - 1] / 1000) : 60;
+
   const datasets = productList.map((product, i) => ({
     label: product,
-    data: times.map(t => ({ x: t / 1000, y: buckets[t][product] || 0 })),
+    data: fullDatasets[i].slice(),
     borderColor: PALETTE[i % PALETTE.length],
     backgroundColor: rgba(PALETTE[i % PALETTE.length], 0.1),
     borderWidth: 2,
@@ -224,10 +262,18 @@ function renderTimeSeriesMultiProduct(buckets, yLabel) {
         tooltip: { backgroundColor: 'rgba(0,0,0,0.8)' },
       },
       scales: {
-        x: { type: 'linear', title: { display: true, text: 'Time (seconds)' } },
+        x: { type: 'linear', min: 0, max: maxSecond, title: { display: true, text: 'Time (seconds)' } },
         y: { title: { display: true, text: yLabel }, beginAtZero: true },
       },
     },
+  });
+
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    chartInstance.data.datasets.forEach((dataset, i) => {
+      dataset.data = fullDatasets[i].filter(pt => pt.x <= second);
+    });
+    chartInstance.update('none');
   });
 }
 
@@ -235,6 +281,7 @@ function renderTimeSeriesMultiProduct(buckets, yLabel) {
 
 function renderFeatureDistribution(data) {
   const features = data.featureDistribution || {};
+  const featureAbsOT = data.featureAbsoluteOverTime || {};
   const labels = Object.keys(features).sort();
   const values = labels.map(l => features[l]);
   const total = values.reduce((s, v) => s + v, 0);
@@ -264,13 +311,22 @@ function renderFeatureDistribution(data) {
           backgroundColor: 'rgba(0,0,0,0.8)',
           callbacks: {
             label: (ctx) => {
-              const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : '0';
-              return `  ${ctx.label.split(' (')[0]}: ${ctx.parsed} ms (${pct}%)`;
+              const frameTotal = ctx.chart.data.datasets[0].data.reduce((s, v) => s + v, 0);
+              const pct = frameTotal > 0 ? ((ctx.parsed / frameTotal) * 100).toFixed(1) : '0';
+              return `  ${ctx.label.split(' (')[0]}: ${Math.round(ctx.parsed)} ms (${pct}%)`;
             },
           },
         },
       },
     },
+  });
+
+  const { frameBySecond, maxSecond } = buildBarFrames(featureAbsOT);
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    const frame = frameBySecond[second] || {};
+    chartInstance.data.datasets[0].data = labels.map(l => frame[l] || 0);
+    chartInstance.update('none');
   });
 }
 
@@ -283,9 +339,14 @@ function renderFeatureDistributionOverTime(data) {
   times.forEach(t => Object.keys(buckets[t]).forEach(f => features.add(f)));
   const featureList = Array.from(features).sort();
 
+  const fullDatasets = featureList.map(feature =>
+    times.map(t => ({ x: t / 1000, y: buckets[t][feature] || 0 }))
+  );
+  const maxSecond = times.length > 0 ? Math.ceil(times[times.length - 1] / 1000) : 60;
+
   const datasets = featureList.map((feature, i) => ({
     label: feature,
-    data: times.map(t => ({ x: t / 1000, y: buckets[t][feature] || 0 })),
+    data: fullDatasets[i].slice(),
     borderColor: PALETTE[i % PALETTE.length],
     backgroundColor: rgba(PALETTE[i % PALETTE.length], 0.1),
     borderWidth: 2,
@@ -305,52 +366,87 @@ function renderFeatureDistributionOverTime(data) {
         tooltip: { backgroundColor: 'rgba(0,0,0,0.8)' },
       },
       scales: {
-        x: { type: 'linear', title: { display: true, text: 'Time (seconds)' } },
+        x: { type: 'linear', min: 0, max: maxSecond, title: { display: true, text: 'Time (seconds)' } },
         y: { title: { display: true, text: 'Share (%)' }, beginAtZero: true, max: 100 },
       },
     },
+  });
+
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    chartInstance.data.datasets.forEach((dataset, i) => {
+      dataset.data = fullDatasets[i].filter(pt => pt.x <= second);
+    });
+    chartInstance.update('none');
   });
 }
 
 // ─── Chart 7: Pupil Dilation Table ────────────────────────────────────────────
 
-function renderPupilDilationTable(data) {
-  const pupilData = data.pupilDilation || {};
+function buildPupilTableHtml(pupilData) {
   const products = Object.entries(pupilData)
+    .filter(([, info]) => info && typeof info.avg === 'number')
     .map(([product, info]) => ({ product, avg: info.avg, duration: info.totalDuration }))
     .sort((a, b) => b.avg - a.avg);
 
-  chartCanvasWrapper.hidden = true;
-  chartTableWrapper.hidden = false;
+  if (!products.length) {
+    return '<thead><tr><th>Rank</th><th>Product</th><th>Weighted Avg Pupil Diameter (mm)</th><th>Total Dwell Time (ms)</th></tr></thead><tbody><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No data yet</td></tr></tbody>';
+  }
 
   let html = '<thead><tr><th>Rank</th><th>Product</th><th>Weighted Avg Pupil Diameter (mm)</th><th>Total Dwell Time (ms)</th></tr></thead><tbody>';
   products.forEach((p, i) => {
     const highlight = i < 3 ? ' class="highlight-row"' : '';
     html += `<tr${highlight}><td>${i + 1}</td><td>${escapeHtml(p.product)}</td><td>${p.avg.toFixed(3)}</td><td>${Math.round(p.duration)}</td></tr>`;
   });
-  html += '</tbody>';
-  chartTable.innerHTML = html;
+  return html + '</tbody>';
+}
+
+function renderPupilDilationTable(data) {
+  const pupilData = data.pupilDilation || {};
+  const pupilOT = data.pupilDilationOverTime || {};
+
+  chartCanvasWrapper.hidden = true;
+  chartTableWrapper.hidden = false;
+  chartTable.innerHTML = buildPupilTableHtml(pupilData);
+
+  const { frameBySecond, maxSecond } = buildBarFrames(pupilOT);
+  initAnimation(maxSecond, (second) => {
+    chartTable.innerHTML = buildPupilTableHtml(frameBySecond[second] || {});
+  });
 }
 
 // ─── Chart 8: Product Comparison Table ────────────────────────────────────────
 
-function renderProductComparisonTable(data) {
-  const compData = data.productComparisons || {};
-  const pairs = compData.pairs || [];
+function buildComparisonTableHtml(compData) {
+  const pairs = (compData.pairs || []).filter(p => p.pair);
   const total = compData.total || 0;
 
-  chartCanvasWrapper.hidden = true;
-  chartTableWrapper.hidden = false;
+  if (!pairs.length) {
+    return '<thead><tr><th>Rank</th><th>Product Pair</th><th>Comparisons</th><th>Share</th></tr></thead><tbody><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No comparisons yet</td></tr></tbody>';
+  }
 
   let html = '<thead><tr><th>Rank</th><th>Product Pair</th><th>Comparisons</th><th>Share</th></tr></thead><tbody>';
-  pairs.filter(p => p.pair).forEach((p, i) => {
+  pairs.forEach((p, i) => {
     const highlight = i < 3 ? ' class="highlight-row"' : '';
     const pct = total > 0 ? ((p.count / total) * 100).toFixed(1) : '0';
     html += `<tr${highlight}><td>${i + 1}</td><td>${escapeHtml(p.pair)}</td><td>${p.count}</td><td>${pct}%</td></tr>`;
   });
-  html += '</tbody>';
-  html += `<tfoot><tr><td colspan="4">Total A→B→A comparison events: ${total}</td></tr></tfoot>`;
-  chartTable.innerHTML = html;
+  html += `</tbody><tfoot><tr><td colspan="4">Total A→B→A comparison events: ${total}</td></tr></tfoot>`;
+  return html;
+}
+
+function renderProductComparisonTable(data) {
+  const compData = data.productComparisons || {};
+  const compOT = data.productComparisonsOverTime || {};
+
+  chartCanvasWrapper.hidden = true;
+  chartTableWrapper.hidden = false;
+  chartTable.innerHTML = buildComparisonTableHtml(compData);
+
+  const { frameBySecond, maxSecond } = buildBarFrames(compOT);
+  initAnimation(maxSecond, (second) => {
+    chartTable.innerHTML = buildComparisonTableHtml(frameBySecond[second] || {});
+  });
 }
 
 // ─── Chart 9: Unique Products over Time ───────────────────────────────────────
@@ -378,14 +474,15 @@ function renderSaccadeSpeedOverTime(data) {
 
 function renderSingleTimeSeries(series, yLabel, color) {
   const times = Object.keys(series).map(Number).sort((a, b) => a - b);
-  const values = times.map(t => ({ x: t / 1000, y: series[t] }));
+  const fullPoints = times.map(t => ({ x: t / 1000, y: series[t] }));
+  const maxSecond = times.length > 0 ? Math.ceil(times[times.length - 1] / 1000) : 60;
 
   createChart({
     type: 'line',
     data: {
       datasets: [{
         label: yLabel,
-        data: values,
+        data: fullPoints.slice(),
         borderColor: color,
         backgroundColor: rgba(color, 0.1),
         borderWidth: 2,
@@ -402,10 +499,16 @@ function renderSingleTimeSeries(series, yLabel, color) {
         tooltip: { backgroundColor: 'rgba(0,0,0,0.8)' },
       },
       scales: {
-        x: { type: 'linear', title: { display: true, text: 'Time (seconds)' } },
+        x: { type: 'linear', min: 0, max: maxSecond, title: { display: true, text: 'Time (seconds)' } },
         y: { title: { display: true, text: yLabel }, beginAtZero: true },
       },
     },
+  });
+
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    chartInstance.data.datasets[0].data = fullPoints.filter(pt => pt.x <= second);
+    chartInstance.update('none');
   });
 }
 
@@ -439,10 +542,17 @@ function renderDualTimeSeries(series, yLabel, color1, color2) {
   const timesCum = Object.keys(cumulative).map(Number).sort((a, b) => a - b);
   const timesRoll = Object.keys(rolling).map(Number).sort((a, b) => a - b);
 
+  const fullCum = timesCum.map(t => ({ x: t / 1000, y: cumulative[t] }));
+  const fullRoll = timesRoll.map(t => ({ x: t / 1000, y: rolling[t] }));
+  const maxSecond = Math.max(
+    timesCum.length > 0 ? Math.ceil(timesCum[timesCum.length - 1] / 1000) : 0,
+    timesRoll.length > 0 ? Math.ceil(timesRoll[timesRoll.length - 1] / 1000) : 0,
+  ) || 60;
+
   const datasets = [
     {
       label: 'Cumulative',
-      data: timesCum.map(t => ({ x: t / 1000, y: cumulative[t] })),
+      data: fullCum.slice(),
       borderColor: color1,
       backgroundColor: rgba(color1, 0.1),
       borderWidth: 2,
@@ -451,7 +561,7 @@ function renderDualTimeSeries(series, yLabel, color1, color2) {
     },
     {
       label: 'Rolling 10s Window',
-      data: timesRoll.map(t => ({ x: t / 1000, y: rolling[t] })),
+      data: fullRoll.slice(),
       borderColor: color2,
       backgroundColor: rgba(color2, 0.1),
       borderWidth: 2,
@@ -471,10 +581,17 @@ function renderDualTimeSeries(series, yLabel, color1, color2) {
         tooltip: { backgroundColor: 'rgba(0,0,0,0.8)' },
       },
       scales: {
-        x: { type: 'linear', title: { display: true, text: 'Time (seconds)' } },
+        x: { type: 'linear', min: 0, max: maxSecond, title: { display: true, text: 'Time (seconds)' } },
         y: { title: { display: true, text: yLabel }, beginAtZero: true },
       },
     },
+  });
+
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    chartInstance.data.datasets[0].data = fullCum.filter(pt => pt.x <= second);
+    chartInstance.data.datasets[1].data = fullRoll.filter(pt => pt.x <= second);
+    chartInstance.update('none');
   });
 }
 
@@ -482,13 +599,14 @@ function renderDualTimeSeries(series, yLabel, color1, color2) {
 
 function renderMaxRevisitPerProduct(data) {
   const revisits = data.maxRevisitPerProduct || {};
+  const revisitsOT = data.revisitsOverTime || {};
   const products = Object.entries(revisits)
     .map(([product, count]) => ({ product, count }))
     .sort((a, b) => b.count - a.count);
 
   const labels = products.map(p => p.product);
   const values = products.map(p => p.count);
-  const maxCount = Math.max(...values);
+  const maxCount = Math.max(...values, 0);
 
   createChart({
     type: 'bar',
@@ -497,8 +615,8 @@ function renderMaxRevisitPerProduct(data) {
       datasets: [{
         label: 'Revisit Count',
         data: values,
-        backgroundColor: values.map(v => v === maxCount ? '#FFD700' : rgba('#4F81BD', 0.82)),
-        borderColor: values.map(v => v === maxCount ? '#DAA520' : '#4F81BD'),
+        backgroundColor: values.map(v => v === maxCount && v > 0 ? '#FFD700' : rgba('#4F81BD', 0.82)),
+        borderColor: values.map(v => v === maxCount && v > 0 ? '#DAA520' : '#4F81BD'),
         borderWidth: 2,
         borderRadius: 6,
       }],
@@ -512,11 +630,35 @@ function renderMaxRevisitPerProduct(data) {
         tooltip: { backgroundColor: 'rgba(0,0,0,0.8)' },
       },
       scales: {
-        x: { title: { display: true, text: 'Number of Revisits' }, beginAtZero: true },
+        x: { title: { display: true, text: 'Number of Revisits' }, beginAtZero: true, max: maxCount || 1 },
         y: { title: { display: true, text: 'Product' } },
       },
     },
   });
+
+  const { frameBySecond, maxSecond } = buildBarFrames(revisitsOT);
+  initAnimation(maxSecond, (second) => {
+    if (!chartInstance) return;
+    const frame = frameBySecond[second] || {};
+    const frameValues = labels.map(l => frame[l] || 0);
+    const frameMax = Math.max(...frameValues, 0);
+    chartInstance.data.datasets[0].data = frameValues;
+    chartInstance.data.datasets[0].backgroundColor = frameValues.map(v => v === frameMax && v > 0 ? '#FFD700' : rgba('#4F81BD', 0.82));
+    chartInstance.data.datasets[0].borderColor = frameValues.map(v => v === frameMax && v > 0 ? '#DAA520' : '#4F81BD');
+    chartInstance.update('none');
+  });
+}
+
+// ─── Utility: Build per-second frame lookup from ms-keyed object ──────────────
+
+function buildBarFrames(msKeyedData) {
+  const times = Object.keys(msKeyedData).map(Number).sort((a, b) => a - b);
+  const frameBySecond = {};
+  times.forEach(ms => {
+    frameBySecond[Math.round(ms / 1000)] = msKeyedData[ms];
+  });
+  const maxSecond = times.length > 0 ? Math.ceil(times[times.length - 1] / 1000) : 60;
+  return { frameBySecond, maxSecond };
 }
 
 // ─── Create Chart ─────────────────────────────────────────────────────────────
@@ -540,6 +682,123 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+// ─── Playback Animation ───────────────────────────────────────────────────────
+
+function initAnimation(maxSecond, applyFn) {
+  if (animState.timerId) {
+    clearInterval(animState.timerId);
+    animState.timerId = null;
+  }
+  animState.playing = false;
+  animState.applyFn = applyFn;
+  animState.maxSecond = maxSecond;
+  animState.currentSecond = maxSecond; // Start showing full chart
+
+  const scrubber = document.getElementById('playbackScrubber');
+  scrubber.max = maxSecond;
+  scrubber.value = maxSecond;
+  document.getElementById('playbackSpeed').value = '1';
+  animState.speed = 1;
+
+  document.getElementById('playbackControls').hidden = false;
+  updatePlaybackUI();
+}
+
+function updatePlaybackUI() {
+  const { currentSecond, maxSecond, playing } = animState;
+  document.getElementById('playbackTime').textContent = currentSecond + 's';
+  document.getElementById('playbackDuration').textContent = maxSecond + 's';
+  document.getElementById('playbackScrubber').value = currentSecond;
+
+  const icon = document.getElementById('playbackPlayIcon');
+  const label = document.getElementById('playbackPlayLabel');
+  if (playing) {
+    icon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+    icon.setAttribute('fill', 'currentColor');
+    icon.setAttribute('stroke', 'none');
+    label.textContent = 'Pause';
+  } else {
+    icon.innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+    icon.setAttribute('fill', 'currentColor');
+    icon.setAttribute('stroke', 'none');
+    label.textContent = 'Play';
+  }
+}
+
+function applyFrame(second) {
+  if (animState.applyFn) animState.applyFn(second);
+}
+
+function tick() {
+  animState.currentSecond++;
+  applyFrame(animState.currentSecond);
+  updatePlaybackUI();
+  if (animState.currentSecond >= animState.maxSecond) {
+    pauseAnimation();
+  }
+}
+
+function playAnimation() {
+  if (animState.currentSecond >= animState.maxSecond) {
+    // Restart from beginning
+    animState.currentSecond = 0;
+    applyFrame(0);
+    updatePlaybackUI();
+  }
+  animState.playing = true;
+  updatePlaybackUI();
+  animState.timerId = setInterval(tick, 1000 / animState.speed);
+}
+
+function pauseAnimation() {
+  animState.playing = false;
+  if (animState.timerId) {
+    clearInterval(animState.timerId);
+    animState.timerId = null;
+  }
+  updatePlaybackUI();
+}
+
+function resetAnimation() {
+  pauseAnimation();
+  animState.currentSecond = 0;
+  applyFrame(0);
+  updatePlaybackUI();
+}
+
+function setupPlaybackListeners() {
+  document.getElementById('playbackPlayBtn').addEventListener('click', () => {
+    if (animState.playing) {
+      pauseAnimation();
+    } else {
+      playAnimation();
+    }
+  });
+
+  document.getElementById('playbackReset').addEventListener('click', () => {
+    resetAnimation();
+  });
+
+  document.getElementById('playbackScrubber').addEventListener('input', (e) => {
+    const second = parseInt(e.target.value, 10);
+    animState.currentSecond = second;
+    if (animState.playing) {
+      pauseAnimation();
+    }
+    applyFrame(second);
+    updatePlaybackUI();
+  });
+
+  document.getElementById('playbackSpeed').addEventListener('change', (e) => {
+    animState.speed = parseFloat(e.target.value);
+    if (animState.playing) {
+      clearInterval(animState.timerId);
+      animState.timerId = setInterval(tick, 1000 / animState.speed);
+    }
+  });
+}
+
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
+setupPlaybackListeners();
 init();

@@ -812,3 +812,86 @@ body {
   color: var(--text-secondary);
   max-width: 400px;
 }
+
+/* ── Playback Controls ───────────────────────────────────────────────────── */
+.playback-controls {
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.playback-timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.playback-scrubber {
+  flex: 1;
+  height: 6px;
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.playback-time,
+.playback-duration {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.playback-play-btn {
+  min-width: 100px;
+  gap: 6px;
+}
+
+.playback-reset-btn {
+  gap: 6px;
+}
+
+.playback-speed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+.playback-speed label {
+  font-weight: 500;
+}
+
+.playback-speed select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  background: var(--white);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.playback-speed select:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+}
+
+/* Pause icon (two vertical bars) */
+.icon-pause rect {
+  fill: currentColor;
+}

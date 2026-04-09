@@ -230,6 +230,49 @@ function computeVisitVarianceOverTime(rawData, calculator) {
   return result;
 }
 
+function computeFeatureAbsoluteOverTime(rawData, calculator) {
+  if (!rawData.length) return {};
+  const lastSecond = Math.ceil(Math.max(...rawData.map(r => r.End_ts || 0)) / 1000);
+  const result = {};
+  for (let s = 1; s <= lastSecond; s++) {
+    result[s * 1000] = calculator.dwellTimePerAOI(rawData, s * 1000);
+  }
+  return result;
+}
+
+function computePupilDilationOverTime(rawData, calculator) {
+  if (!rawData.length) return {};
+  const lastSecond = Math.ceil(Math.max(...rawData.map(r => r.End_ts || 0)) / 1000);
+  const result = {};
+  for (let s = 1; s <= lastSecond; s++) {
+    result[s * 1000] = calculator.pupilDilationPerProduct(rawData, s * 1000);
+  }
+  return result;
+}
+
+function computeProductComparisonsOverTime(rawData, calculator) {
+  if (!rawData.length) return {};
+  const lastSecond = Math.ceil(Math.max(...rawData.map(r => r.End_ts || 0)) / 1000);
+  const result = {};
+  for (let s = 1; s <= lastSecond; s++) {
+    result[s * 1000] = {
+      pairs: calculator.topProductComparisons(rawData, s * 1000, 10),
+      total: calculator.productComparisons(rawData, s * 1000),
+    };
+  }
+  return result;
+}
+
+function computeRevisitsOverTime(rawData, calculator) {
+  if (!rawData.length) return {};
+  const lastSecond = Math.ceil(Math.max(...rawData.map(r => r.End_ts || 0)) / 1000);
+  const result = {};
+  for (let s = 1; s <= lastSecond; s++) {
+    result[s * 1000] = calculator.revisitsPerProduct(rawData, s * 1000);
+  }
+  return result;
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // Health check
@@ -301,6 +344,12 @@ app.post(
         
         // Chart 15: Max Revisit per Product
         maxRevisitPerProduct: calculator.revisitsPerProduct(rawData),
+
+        // Animation time-series for non-line charts
+        featureAbsoluteOverTime: computeFeatureAbsoluteOverTime(rawData, calculator),
+        pupilDilationOverTime: computePupilDilationOverTime(rawData, calculator),
+        productComparisonsOverTime: computeProductComparisonsOverTime(rawData, calculator),
+        revisitsOverTime: computeRevisitsOverTime(rawData, calculator),
       };
 
       // Clean up uploaded file

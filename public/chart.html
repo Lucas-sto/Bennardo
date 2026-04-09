@@ -52,6 +52,39 @@
           <canvas id="chartCanvas"></canvas>
         </div>
 
+        <!-- Playback Controls (time-series charts only) -->
+        <div class="playback-controls" id="playbackControls" hidden>
+          <div class="playback-timeline">
+            <span class="playback-time" id="playbackTime">0s</span>
+            <input type="range" class="playback-scrubber" id="playbackScrubber" min="0" max="60" value="60" step="1">
+            <span class="playback-duration" id="playbackDuration">60s</span>
+          </div>
+          <div class="playback-actions">
+            <button class="btn btn--outline btn--small playback-reset-btn" id="playbackReset" title="Reset to start">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 1 0 .49-4.45"/>
+              </svg>
+              Reset
+            </button>
+            <button class="btn btn--primary playback-play-btn" id="playbackPlayBtn">
+              <svg class="icon" id="playbackPlayIcon" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <polygon points="5,3 19,12 5,21"/>
+              </svg>
+              <span id="playbackPlayLabel">Play</span>
+            </button>
+            <div class="playback-speed">
+              <label for="playbackSpeed">Speed</label>
+              <select id="playbackSpeed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <!-- Table container (for table-type data) -->
         <div class="chart-table-wrapper" id="chartTableWrapper" hidden>
           <table class="data-table" id="chartTable"></table>
