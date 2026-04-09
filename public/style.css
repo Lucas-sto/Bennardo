@@ -587,6 +587,7 @@ body {
   gap: 14px;
   align-items: flex-start;
   padding: 16px;
+  padding-bottom: 52px;
   background: var(--bg);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);

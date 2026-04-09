@@ -304,7 +304,7 @@ function disableChartButtons() {
 function handleViewChart(e) {
   const chartId = e.target.dataset.chartId;
   if (chartId && chartDataProcessed) {
-    window.open(`chart.html?chart=${chartId}`, '_blank');
+    window.location.href = `chart.html?chart=${chartId}`;
   }
 }
 
@@ -326,4 +326,15 @@ updateProgress();
 if (sessionStorage.getItem('chartData')) {
   chartDataProcessed = true;
   enableChartButtons();
+  
+  // Show visual indicator that data is loaded from previous session
+  filenameRaw.textContent = 'Data from previous upload';
+  filesizeRaw.textContent = 'Session data available';
+  labelRaw.hidden = true;
+  previewRaw.hidden = false;
+  zoneRaw.classList.add('has-file');
+  
+  // Mark as if file is present for progress indicator
+  fileRaw = { name: 'session-data' }; // Dummy file object
+  updateProgress();
 }
