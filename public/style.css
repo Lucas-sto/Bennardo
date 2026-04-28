@@ -649,6 +649,123 @@ body {
   border-top: 1px solid rgba(255,255,255,.06);
 }
 
+/* ── File Library ────────────────────────────────────────────────────────── */
+.file-library__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+.file-library__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+}
+
+.file-library__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.file-library__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.file-library__item:hover {
+  border-color: var(--brand-accent);
+  background: rgba(79,129,189,.04);
+}
+
+.file-library__item.active {
+  border-color: #27ae60;
+  background: rgba(39,174,96,.06);
+}
+
+.file-library__item-icon {
+  color: var(--brand-accent);
+  flex-shrink: 0;
+}
+
+.file-library__item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-library__item-name {
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--brand-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-library__item-meta {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.file-library__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-select-file {
+  padding: 5px 14px;
+  font-size: .8rem;
+  font-weight: 600;
+  background: var(--brand-accent);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+
+.btn-select-file:hover:not(:disabled) {
+  background: #3d6fa8;
+}
+
+.btn-select-file:disabled {
+  background: #27ae60;
+  cursor: default;
+  opacity: 1;
+}
+
+.btn-delete-file {
+  padding: 5px 10px;
+  font-size: .8rem;
+  font-weight: 600;
+  background: transparent;
+  color: #e74c3c;
+  border: 1.5px solid #e74c3c;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+
+.btn-delete-file:hover {
+  background: #fee;
+}
+
 /* ── Error toast ─────────────────────────────────────────────────────────── */
 .toast {
   position: fixed;

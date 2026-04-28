@@ -30,14 +30,15 @@ const lines           = document.querySelectorAll('.upload-progress__line');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let fileRaw = null;
+let fileRaw            = null;
+let storedFilename     = null; // filename in /uploads/ of the currently active file
 let chartDataProcessed = false;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatBytes(bytes) {
-  if (bytes < 1024)       return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024)         return `${bytes} B`;
+  if (bytes < 1024 * 1024)  return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
@@ -55,28 +56,24 @@ function showToast(msg) {
 // ─── Progress indicator ───────────────────────────────────────────────────────
 
 function updateProgress() {
-  const hasRaw = !!fileRaw;
+  const hasFile = !!(fileRaw || storedFilename);
 
-  // Step: Raw
-  stepRaw.classList.toggle('done',   hasRaw);
-  stepRaw.classList.toggle('active', !hasRaw);
+  stepRaw.classList.toggle('done',   hasFile);
+  stepRaw.classList.toggle('active', !hasFile);
 
-  // Step: Generate
-  stepGenerate.classList.toggle('active', hasRaw);
+  stepGenerate.classList.toggle('active', hasFile);
   stepGenerate.classList.remove('done');
 
-  // Line
-  lines[0].classList.toggle('done',   hasRaw);
-  lines[0].classList.toggle('active', !hasRaw);
+  lines[0].classList.toggle('done',   hasFile);
+  lines[0].classList.toggle('active', !hasFile);
 
-  // Button
-  btnGenerate.disabled = !hasRaw;
-  generateHint.textContent = hasRaw
-    ? 'Raw file ready — click to generate your PDF report. Cumulative metrics will be computed automatically.'
-    : 'Please upload the raw fixations CSV file to enable report generation.';
+  btnGenerate.disabled = !hasFile;
+  generateHint.textContent = hasFile
+    ? 'File ready — click to generate your PDF report. Cumulative metrics will be computed automatically.'
+    : 'Please upload a CSV file or select one from the library to enable report generation.';
 }
 
-// ─── File selection ───────────────────────────────────────────────────────────
+// ─── File selection (new upload) ──────────────────────────────────────────────
 
 async function setFile(file) {
   if (!file) return;
@@ -92,26 +89,26 @@ async function setFile(file) {
   }
 
   fileRaw = file;
-  filenameRaw.textContent  = file.name;
-  filesizeRaw.textContent  = formatBytes(file.size);
-  labelRaw.hidden          = true;
-  previewRaw.hidden        = false;
+  filenameRaw.textContent = file.name;
+  filesizeRaw.textContent = formatBytes(file.size);
+  labelRaw.hidden         = true;
+  previewRaw.hidden       = false;
   zoneRaw.classList.add('has-file');
 
   updateProgress();
-  
-  // Process chart data in background
   await processChartData(file);
 }
 
 function clearFile() {
-  fileRaw                  = null;
-  inputRaw.value           = '';
-  labelRaw.hidden          = false;
-  previewRaw.hidden        = true;
+  fileRaw            = null;
+  storedFilename     = null;
+  inputRaw.value     = '';
+  labelRaw.hidden    = false;
+  previewRaw.hidden  = true;
   zoneRaw.classList.remove('has-file');
   disableChartButtons();
   updateProgress();
+  renderFileLibrary(currentLibraryFiles); // refresh active state in library
 }
 
 // ─── Input change listeners ───────────────────────────────────────────────────
@@ -185,24 +182,27 @@ function stopLoadingAnimation() {
 // ─── Generate ─────────────────────────────────────────────────────────────────
 
 btnGenerate.addEventListener('click', async () => {
-  if (!fileRaw) return;
+  if (!fileRaw && !storedFilename) return;
 
-  // Hide previous result
   resultCard.hidden = true;
-
   startLoadingAnimation();
 
-  const formData = new FormData();
-  formData.append('raw', fileRaw);
-
   try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      body: formData,
-    });
+    let res;
+
+    if (storedFilename) {
+      res = await fetch('/api/generate-stored', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: storedFilename }),
+      });
+    } else {
+      const formData = new FormData();
+      formData.append('raw', fileRaw);
+      res = await fetch('/api/generate', { method: 'POST', body: formData });
+    }
 
     const data = await res.json();
-
     stopLoadingAnimation();
 
     if (!res.ok || !data.success) {
@@ -210,12 +210,10 @@ btnGenerate.addEventListener('click', async () => {
       return;
     }
 
-    // ── Show result ──────────────────────────────────────────────────────────
-    btnDownload.href        = data.pdfUrl;
-    btnDownload.download    = data.pdfName;
-    resultSub.textContent   = `Report "${data.pdfName}" generated successfully.`;
+    btnDownload.href      = data.pdfUrl;
+    btnDownload.download  = data.pdfName;
+    resultSub.textContent = `Report "${data.pdfName}" generated successfully.`;
 
-    // Stats
     statsGrid.innerHTML = '';
     if (data.stats) {
       Object.entries(data.stats).forEach(([key, val]) => {
@@ -229,13 +227,15 @@ btnGenerate.addEventListener('click', async () => {
       });
     }
 
-    // Mark generate step as done
     stepGenerate.classList.remove('active');
     stepGenerate.classList.add('done');
     if (lines[0]) lines[0].classList.add('done');
 
     resultCard.hidden = false;
     resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Refresh library in case a new file was stored
+    await refreshFileLibrary();
 
   } catch (err) {
     stopLoadingAnimation();
@@ -259,11 +259,7 @@ async function processChartData(file) {
   formData.append('raw', file);
 
   try {
-    const res = await fetch('/api/process', {
-      method: 'POST',
-      body: formData,
-    });
-
+    const res    = await fetch('/api/process', { method: 'POST', body: formData });
     const result = await res.json();
 
     if (!res.ok || !result.success) {
@@ -271,29 +267,26 @@ async function processChartData(file) {
       return;
     }
 
-    // Store chart data in sessionStorage
     sessionStorage.setItem('chartData', JSON.stringify(result.data));
+    storedFilename     = result.storedFilename;
     chartDataProcessed = true;
 
-    // Enable all "View Chart" buttons
     enableChartButtons();
-
+    await refreshFileLibrary();
   } catch (err) {
     console.error('Chart data processing error:', err);
   }
 }
 
 function enableChartButtons() {
-  const buttons = document.querySelectorAll('.btn-view-chart');
-  buttons.forEach(btn => {
+  document.querySelectorAll('.btn-view-chart').forEach(btn => {
     btn.disabled = false;
     btn.addEventListener('click', handleViewChart);
   });
 }
 
 function disableChartButtons() {
-  const buttons = document.querySelectorAll('.btn-view-chart');
-  buttons.forEach(btn => {
+  document.querySelectorAll('.btn-view-chart').forEach(btn => {
     btn.disabled = true;
     btn.removeEventListener('click', handleViewChart);
   });
@@ -305,6 +298,122 @@ function handleViewChart(e) {
   const chartId = e.target.dataset.chartId;
   if (chartId && chartDataProcessed) {
     window.location.href = `chart.html?chart=${chartId}`;
+  }
+}
+
+// ─── File Library ─────────────────────────────────────────────────────────────
+
+let currentLibraryFiles = [];
+
+async function refreshFileLibrary() {
+  try {
+    const res  = await fetch('/api/files');
+    const data = await res.json();
+    currentLibraryFiles = data.files || [];
+    renderFileLibrary(currentLibraryFiles);
+  } catch (err) {
+    console.error('Failed to load file library:', err);
+  }
+}
+
+function renderFileLibrary(files) {
+  const container = document.getElementById('fileLibrary');
+  const list      = document.getElementById('fileLibraryList');
+  const countEl   = document.getElementById('fileLibraryCount');
+
+  if (!files.length) {
+    container.hidden = true;
+    return;
+  }
+
+  container.hidden = false;
+  countEl.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
+
+  list.innerHTML = '';
+  files.forEach(f => {
+    const isActive = storedFilename === f.filename;
+    const date = new Date(f.uploadedAt).toLocaleString('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+
+    const item = document.createElement('div');
+    item.className = `file-library__item${isActive ? ' active' : ''}`;
+    item.innerHTML = `
+      <svg class="icon file-library__item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <div class="file-library__item-info">
+        <div class="file-library__item-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+        <div class="file-library__item-meta">${escapeHtml(formatBytes(f.size))} · ${escapeHtml(date)}</div>
+      </div>
+      <div class="file-library__actions">
+        <button class="btn-select-file" ${isActive ? 'disabled' : ''}>${isActive ? 'Selected' : 'Select'}</button>
+        <button class="btn-delete-file">Delete</button>
+      </div>
+    `;
+
+    item.querySelector('.btn-select-file').addEventListener('click', () => {
+      selectStoredFile(f.filename, f.name, f.size);
+    });
+
+    item.querySelector('.btn-delete-file').addEventListener('click', () => {
+      deleteStoredFile(f.filename);
+    });
+
+    list.appendChild(item);
+  });
+}
+
+async function selectStoredFile(filename, displayName, size) {
+  // Update upload zone UI to reflect selected file
+  storedFilename          = filename;
+  fileRaw                 = null;
+  filenameRaw.textContent = displayName;
+  filesizeRaw.textContent = formatBytes(size);
+  labelRaw.hidden         = true;
+  previewRaw.hidden       = false;
+  zoneRaw.classList.add('has-file');
+  updateProgress();
+  renderFileLibrary(currentLibraryFiles); // immediately show selected state
+
+  // Process chart data for the selected file
+  disableChartButtons();
+  try {
+    const res    = await fetch('/api/process-stored', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ filename }),
+    });
+    const result = await res.json();
+
+    if (!res.ok || !result.success) {
+      showToast(`Error: ${result.error || 'Processing failed'}`);
+      return;
+    }
+
+    sessionStorage.setItem('chartData', JSON.stringify(result.data));
+    chartDataProcessed = true;
+    enableChartButtons();
+  } catch (err) {
+    showToast(`Network error: ${err.message}`);
+  }
+}
+
+async function deleteStoredFile(filename) {
+  try {
+    const res = await fetch(`/api/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      showToast('Failed to delete file.');
+      return;
+    }
+    if (storedFilename === filename) {
+      clearFile();
+    }
+    await refreshFileLibrary();
+  } catch (err) {
+    showToast(`Network error: ${err.message}`);
   }
 }
 
@@ -322,19 +431,11 @@ function escapeHtml(str) {
 
 updateProgress();
 
-// Check if chart data is already in sessionStorage
+// Re-enable chart buttons if data is still in session storage
 if (sessionStorage.getItem('chartData')) {
   chartDataProcessed = true;
   enableChartButtons();
-  
-  // Show visual indicator that data is loaded from previous session
-  filenameRaw.textContent = 'Data from previous upload';
-  filesizeRaw.textContent = 'Session data available';
-  labelRaw.hidden = true;
-  previewRaw.hidden = false;
-  zoneRaw.classList.add('has-file');
-  
-  // Mark as if file is present for progress indicator
-  fileRaw = { name: 'session-data' }; // Dummy file object
-  updateProgress();
 }
+
+// Load file library on startup
+refreshFileLibrary();
