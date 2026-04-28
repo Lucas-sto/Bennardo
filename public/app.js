@@ -160,7 +160,7 @@ advisorNameInput.addEventListener('keydown', (e) => {
 
 // ─── Video Link Modal (MP4) ───────────────────────────────────────────────────
 
-function openVideoModal(file) {
+async function openVideoModal(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith('.mp4')) {
     showToast(`"${file.name}" is not an MP4 file.`);
@@ -177,6 +177,13 @@ function openVideoModal(file) {
 
   videoModalDesc.textContent =
     `Video: "${file.name}" (${formatBytes(file.size)}) — select the CSV session file to link it with.`;
+
+  // Always fetch the latest library before populating the list
+  try {
+    const res  = await fetch('/api/files');
+    const data = await res.json();
+    currentLibraryFiles = data.files || [];
+  } catch (_) { /* use cached list on network error */ }
 
   const csvFiles = currentLibraryFiles.filter(f => f.type === 'csv');
   if (!csvFiles.length) {
