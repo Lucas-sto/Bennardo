@@ -330,6 +330,51 @@
       <p>EyeTracking Dashboard for Shopping Advisors &nbsp;·&nbsp; Analysis & Reporting Tool</p>
     </footer>
 
+    <!-- ── Session Info Modal ────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="sessionModal" hidden>
+      <div class="modal">
+        <h2 class="modal__title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          Session Information
+        </h2>
+        <p class="modal__desc">Please select the store type and enter the advisor's name to label this session.</p>
+
+        <div class="modal__field">
+          <span class="modal__label">Store Type</span>
+          <div class="modal__radio-group">
+            <label class="modal__radio">
+              <input type="radio" name="storeType" value="E" checked />
+              <span class="modal__radio-box"><span class="modal__radio-dot"></span></span>
+              <span>E &ndash; Electronics Store</span>
+            </label>
+            <label class="modal__radio">
+              <input type="radio" name="storeType" value="C" />
+              <span class="modal__radio-box"><span class="modal__radio-dot"></span></span>
+              <span>C &ndash; Car Dealership</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal__field">
+          <label class="modal__label" for="advisorName">Advisor Name</label>
+          <input type="text" id="advisorName" class="modal__input" placeholder="Enter name…" autocomplete="off" />
+        </div>
+
+        <div class="modal__actions">
+          <button class="btn btn--outline" id="btnModalCancel">Cancel</button>
+          <button class="btn btn--primary" id="btnModalConfirm">
+            Continue
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>

@@ -1,0 +1,275 @@
+# Cline Rules – EyeTracking Dashboard for Shopping Advisors
+
+## Project Overview
+
+Node.js/Express web application that processes eye-tracking CSV data from retail shopping sessions.
+It generates interactive Chart.js visualisations in the browser and server-rendered PDF reports
+(pdfkit + chartjs-node-canvas). The server runs on **port 3000**.
+
+---
+
+## Tech Stack & Constraints
+
+- **Runtime:** Node.js, CommonJS (`"type": "commonjs"` in package.json)
+- **Backend:** Express 5, Multer (file uploads), csv-parse (CSV parsing), pdfkit (PDF generation)
+- **Charts (server-side):** chartjs-node-canvas + chart.js
+- **Frontend:** Vanilla JS – NO framework (no React, Vue, Angular, etc.)
+- **No TypeScript** – plain `.js` files only
+- **No build step** – files are served directly from `public/`
+- **No test framework** – no test files exist; do not add Jest/Mocha/etc. without being asked
+
+---
+
+## Directory Structure
+
+```
+/
+├── server.js              # Express entry point – all routes defined here
+├── src/                   # Server-side modules (CommonJS classes)
+│   ├── DataProcessor.js           # CSV parsing + data extraction helpers
+│   ├── CumulativeStatsCalculator.js # All metric computations on fixation data
+│   ├── PDFGenerator.js            # pdfkit wrapper for building PDF reports
+│   ├── *Chart.js                  # One class per chart type (chartjs-node-canvas)
+│   ├── *Table.js                  # One class per table type (data only, no rendering)
+│   └── ...
+├── public/                # Static frontend files
+│   ├── index.html         # Main upload/generate page
+│   ├── app.js             # Frontend logic for index.html
+│   ├── chart.html         # Chart viewer page
+│   ├── chart-viewer.js    # Frontend logic for chart.html
+│   └── style.css          # All styles
+├── uploads/               # Stored CSV files (auto-created, gitignored)
+└── output/                # Generated PDF files (auto-created, gitignored)
+```
+
+---
+
+## Raw Fixation Data – CSV Column Reference
+
+These are the canonical column names used throughout the codebase. Always use these exact names
+when reading from fixation rows:
+
+| Column                        | Type    | Description                                      |
+|-------------------------------|---------|--------------------------------------------------|
+| `Target_Product`              | string  | Product being fixated (e.g. `"Product_C"`)       |
+| `Target_AOI`                  | string  | Area of interest: `price`, `brand`, `details`    |
+| `Duration`                    | number  | Fixation duration in **milliseconds**            |
+| `End_ts`                      | number  | Fixation end timestamp in **milliseconds**       |
+| `Pupil_Diameter_Mean`         | number  | Mean pupil diameter during fixation              |
+| `Preceding_saccade_duration`  | number  | Duration of preceding saccade in ms             |
+| `Preceding_saccade_amplitude` | number  | Amplitude of preceding saccade                  |
+
+**All timestamps and durations are in milliseconds.**
+
+AOI values are normalised to Title-case when used as keys:
+`raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()`
+
+---
+
+## Code Style Conventions
+
+- Every `.js` file starts with `'use strict';`
+- CommonJS: `require()` / `module.exports`
+- ES6 classes with JSDoc comments on all public methods
+- Section dividers use the box-drawing style:
+  ```js
+  // ─── Section Name ─────────────────────────────────────────────────────────────
+  ```
+- Private methods are prefixed with `_` (e.g. `_collapseToVisits`, `_buildSeries`)
+- Arrow functions for short helpers defined at module level (e.g. `rgba`, `formatBytes`)
+- `const` by default; `let` only when reassignment is needed; never `var`
+- 2-space indentation
+- Single quotes for strings
+
+---
+
+## Chart Class Pattern (src/*Chart.js)
+
+Every chart module exports exactly one class following this template:
+
+```js
+'use strict';
+
+const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const CumulativeStatsCalculator = require('./CumulativeStatsCalculator');
+
+const WIDTH  = 900;
+const HEIGHT = 500;
+
+const PALETTE = [
+  '#4F81BD', '#C0504D', '#9BBB59', '#8064A2',
+  '#4BACC6', '#F79646', '#2C4770', '#A31515',
+  '#00B050', '#FF6600',
+];
+
+const rgba = (hex, a) => { /* hex → rgba string */ };
+
+class MyNewChart {
+  constructor(width = WIDTH, height = HEIGHT) {
+    this._canvas = new ChartJSNodeCanvas({ width, height, backgroundColour: '#ffffff' });
+  }
+
+  /**
+   * @param {object[]} rows  Parsed rows from raw fixation CSV
+   * @returns {Promise<Buffer>}  PNG image buffer
+   */
+  async render(rows) {
+    // compute data using CumulativeStatsCalculator
+    // return this._canvas.renderToBuffer({ ... });
+  }
+
+  // Optional fallback for empty data:
+  async _renderEmpty() { /* ... */ }
+}
+
+module.exports = MyNewChart;
+```
+
+Key rules:
+- Canvas size is always **900 × 500** unless there is a specific reason to differ
+- Background colour is always `'#ffffff'`
+- Use `PALETTE` for colours; wrap with `rgba(hex, alpha)` for fills
+- `render()` always accepts the raw fixation rows array and returns `Promise<Buffer>`
+- Charts that can have empty data must implement `_renderEmpty()` and call it as a fallback
+- All chart options use `responsive: false`
+
+---
+
+## Table Class Pattern (src/*Table.js)
+
+Table classes compute data only – they do not render anything. They return a descriptor object
+consumed by `PDFGenerator.addTablePage()`:
+
+```js
+class MyTable {
+  /**
+   * @param {object[]} rows  Raw fixation rows
+   * @returns {{ title, subtitle, columns, rows, topN, footer }}
+   */
+  compute(rows) {
+    return {
+      title:    'Table Title',
+      subtitle: 'Short description',
+      columns:  ['Col A', 'Col B'],   // header labels
+      rows:     [['val1', 'val2']],   // array of row arrays
+      topN:     3,                    // highlight top N rows (gold/silver/bronze)
+      footer:   'Source: raw fixation data',
+    };
+  }
+}
+
+module.exports = MyTable;
+```
+
+---
+
+## CumulativeStatsCalculator – Key Methods
+
+All methods accept `(fixations, secondMs = Infinity)` unless noted otherwise.
+`secondMs` is always in **milliseconds** (e.g. `5 * 1000` for second 5).
+
+| Method                          | Returns                                      |
+|---------------------------------|----------------------------------------------|
+| `getFixationsUpTo(f, ms)`       | Filtered array where `End_ts <= ms`          |
+| `getFixationsInWindow(f, from, to)` | Filtered array within time window        |
+| `fixationsPerProduct(f, ms)`    | `{ [product]: count }`                       |
+| `dwellTimePerProduct(f, ms)`    | `{ [product]: totalDurationMs }`             |
+| `dwellTimePerAOI(f, ms)`        | `{ [aoi]: totalDurationMs }`                 |
+| `pupilDilationPerProduct(f, ms)`| `{ [product]: { avg, totalDuration } }`      |
+| `productComparisons(f, ms)`     | `number` – X→Y→X pattern count              |
+| `topProductComparisons(f, ms, N)`| `[{ pair, count }]` top N pairs             |
+| `revisitsPerProduct(f, ms)`     | `{ [product]: revisitCount }`                |
+| `meanSaccadeSpeed(f, ms)`       | `number`                                     |
+| `averageFixationDuration(f, ms)`| `number` ms                                  |
+| `varianceFixationDuration(f, ms)`| `number` ms²                                |
+| `varianceTotalVisitDuration(f, ms)`| `number` ms²                              |
+| `computeAll(fixations, second)` | Full metrics row for `second` (integer)      |
+
+Rolling variants exist for avg/variance: `rollingAverageFixationDuration`, `rollingVarianceFixationDuration`,
+`rollingVarianceTotalVisitDuration` – all use a **10-second (10 000 ms) window** by default.
+
+---
+
+## Time-Series Computation Pattern (server.js)
+
+All over-time computations in `server.js` follow this pattern:
+- **Bucket size:** 1 000 ms (1 second)
+- **Rolling window:** 10 000 ms (10 seconds)
+- Loop from `t = 0` (or `t = windowSize` for rolling) to `lastTs` in steps of `bucketSize`
+- Result is a plain object keyed by timestamp in ms: `{ [timestampMs]: value }`
+
+```js
+function computeXOverTime(rawData, calculator) {
+  const result = {};
+  const bucketSize = 1000;
+  if (!rawData.length) return result;
+  const lastTs = Math.max(...rawData.map(r => r.End_ts || 0));
+  for (let t = 0; t <= lastTs; t += bucketSize) {
+    result[t] = calculator.someMethod(rawData, t);
+  }
+  return result;
+}
+```
+
+---
+
+## Adding a New Chart
+
+1. Create `src/MyNewChart.js` following the Chart Class Pattern above.
+2. `require` it in `server.js` alongside the other chart imports.
+3. In `buildPDF()` in `server.js`, call `await new MyNewChart().render(processor.rawData || [])` and store the buffer.
+4. Add `pdfGen.addChartPage(buffer, 'Title', 'Description', 'raw')` in the correct position.
+5. In `buildChartData()`, add the corresponding over-time computation if needed.
+6. Expose the new chart key in the JSON returned by `/api/process` and `/api/process-stored`.
+7. Add a "View Chart" button in `public/index.html` with `data-chart-id="myNewChart"`.
+8. Handle the new `chartId` in `public/chart-viewer.js`.
+
+---
+
+## API Conventions
+
+All API routes are defined in `server.js`. Follow these conventions:
+
+- File uploads use `upload.single('raw')` (Multer middleware)
+- Stored files live in `uploads/` with filename pattern `{timestamp}_{safeName}.csv`
+- Generated PDFs live in `output/` with filename pattern `eyetracking_report_{timestamp}.pdf`
+- Success responses: `{ success: true, ...data }`
+- Error responses: `{ error: 'message' }` with appropriate HTTP status code
+- Always use `path.basename()` on user-supplied filenames before using them as file paths
+- File size limit: **50 MB**
+
+---
+
+## Frontend Conventions (public/)
+
+- Vanilla JS only – no npm packages on the client side
+- DOM references are declared at the top of each script file
+- State variables are declared after DOM refs
+- `escapeHtml()` must be used whenever inserting user-supplied strings into innerHTML
+- Chart data is passed between pages via `sessionStorage` under the key `'chartData'`
+- Toast notifications use `showToast(msg)` – auto-dismiss after 5 seconds
+- Dates are formatted with `'de-DE'` locale
+
+---
+
+## Running the Project
+
+```bash
+npm start        # or: node server.js
+# → http://localhost:3000
+```
+
+No build step required. The server auto-creates `uploads/` and `output/` on first start.
+
+---
+
+## What NOT to Do
+
+- Do **not** introduce TypeScript, JSX, or a frontend framework
+- Do **not** add a bundler (Webpack, Vite, Rollup, etc.)
+- Do **not** use `var` – use `const`/`let`
+- Do **not** use ES module syntax (`import`/`export`) – this is a CommonJS project
+- Do **not** store sensitive data; uploaded CSVs are research data and should be treated accordingly
+- Do **not** modify the `uploads/` or `output/` directories manually – they are managed by the server
+- Do **not** change the canvas dimensions (900 × 500) or the shared `PALETTE` without updating all chart files consistently
+- Do **not** add a database – file-based storage in `uploads/` is intentional

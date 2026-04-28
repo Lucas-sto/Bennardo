@@ -2,37 +2,43 @@
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
-const inputRaw        = document.getElementById('inputRaw');
-const zoneRaw         = document.getElementById('zoneRaw');
-const labelRaw        = document.getElementById('labelRaw');
-const previewRaw      = document.getElementById('previewRaw');
-const filenameRaw     = document.getElementById('filenameRaw');
-const filesizeRaw     = document.getElementById('filesizeRaw');
-const removeRaw       = document.getElementById('removeRaw');
+const inputRaw         = document.getElementById('inputRaw');
+const zoneRaw          = document.getElementById('zoneRaw');
+const labelRaw         = document.getElementById('labelRaw');
+const previewRaw       = document.getElementById('previewRaw');
+const filenameRaw      = document.getElementById('filenameRaw');
+const filesizeRaw      = document.getElementById('filesizeRaw');
+const removeRaw        = document.getElementById('removeRaw');
 
-const btnGenerate     = document.getElementById('btnGenerate');
-const generateHint    = document.getElementById('generateHint');
+const sessionModal     = document.getElementById('sessionModal');
+const btnModalConfirm  = document.getElementById('btnModalConfirm');
+const btnModalCancel   = document.getElementById('btnModalCancel');
+const advisorNameInput = document.getElementById('advisorName');
 
-const loadingOverlay  = document.getElementById('loadingOverlay');
-const loadingStep     = document.getElementById('loadingStep');
-const loadingBarFill  = document.getElementById('loadingBarFill');
+const btnGenerate      = document.getElementById('btnGenerate');
+const generateHint     = document.getElementById('generateHint');
 
-const resultCard      = document.getElementById('resultCard');
-const resultSub       = document.getElementById('resultSub');
-const btnDownload     = document.getElementById('btnDownload');
-const btnReset        = document.getElementById('btnReset');
-const statsGrid       = document.getElementById('statsGrid');
+const loadingOverlay   = document.getElementById('loadingOverlay');
+const loadingStep      = document.getElementById('loadingStep');
+const loadingBarFill   = document.getElementById('loadingBarFill');
 
-const stepRaw         = document.getElementById('stepRaw');
-const stepGenerate    = document.getElementById('stepGenerate');
+const resultCard       = document.getElementById('resultCard');
+const resultSub        = document.getElementById('resultSub');
+const btnDownload      = document.getElementById('btnDownload');
+const btnReset         = document.getElementById('btnReset');
+const statsGrid        = document.getElementById('statsGrid');
 
-const lines           = document.querySelectorAll('.upload-progress__line');
+const stepRaw          = document.getElementById('stepRaw');
+const stepGenerate     = document.getElementById('stepGenerate');
+
+const lines            = document.querySelectorAll('.upload-progress__line');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let fileRaw            = null;
 let storedFilename     = null; // filename in /uploads/ of the currently active file
 let chartDataProcessed = false;
+let pendingFile        = null; // file waiting for session info modal confirmation
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,20 +79,92 @@ function updateProgress() {
     : 'Please upload a CSV file or select one from the library to enable report generation.';
 }
 
-// ─── File selection (new upload) ──────────────────────────────────────────────
+// ─── Session Info Modal ───────────────────────────────────────────────────────
 
-async function setFile(file) {
+function openSessionModal(file) {
   if (!file) return;
 
+  // Basic validation before showing modal
   if (!file.name.endsWith('.csv')) {
     showToast(`"${file.name}" is not a CSV file. Please select a .csv file.`);
     return;
   }
-
   if (file.size > 50 * 1024 * 1024) {
     showToast(`File is too large (${formatBytes(file.size)}). Maximum size is 50 MB.`);
     return;
   }
+
+  pendingFile = file;
+  advisorNameInput.value = '';
+  advisorNameInput.classList.remove('input--error');
+  // Reset radio to E
+  const radioE = document.querySelector('input[name="storeType"][value="E"]');
+  if (radioE) radioE.checked = true;
+
+  sessionModal.hidden = false;
+  // Focus name input after transition
+  setTimeout(() => advisorNameInput.focus(), 80);
+}
+
+function closeSessionModal() {
+  sessionModal.hidden = true;
+  pendingFile = null;
+  // Reset file input so the same file can be re-selected if cancelled
+  inputRaw.value = '';
+}
+
+btnModalCancel.addEventListener('click', closeSessionModal);
+
+// Close on backdrop click
+sessionModal.addEventListener('click', (e) => {
+  if (e.target === sessionModal) closeSessionModal();
+});
+
+// Close on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !sessionModal.hidden) closeSessionModal();
+});
+
+btnModalConfirm.addEventListener('click', () => {
+  const name = advisorNameInput.value.trim();
+  if (!name) {
+    advisorNameInput.classList.add('input--error');
+    advisorNameInput.focus();
+    showToast('Please enter the advisor name.');
+    return;
+  }
+  advisorNameInput.classList.remove('input--error');
+
+  const storeType = document.querySelector('input[name="storeType"]:checked').value;
+
+  // Build date string DD.MM.YYYY
+  const now  = new Date();
+  const dd   = String(now.getDate()).padStart(2, '0');
+  const mm   = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const dateStr = `${dd}.${mm}.${yyyy}`;
+
+  // Sanitize name: keep letters, digits, hyphens; replace everything else with _
+  const safeName    = name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, '_');
+  const newFilename = `${storeType}_${safeName}_${dateStr}.csv`;
+
+  const renamedFile = new File([pendingFile], newFilename, { type: 'text/csv' });
+
+  sessionModal.hidden = true;
+  pendingFile = null;
+
+  setFile(renamedFile);
+});
+
+// Allow submitting with Enter in the name field
+advisorNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') btnModalConfirm.click();
+});
+
+// ─── File selection (new upload) ──────────────────────────────────────────────
+
+async function setFile(file) {
+  if (!file) return;
 
   fileRaw = file;
   filenameRaw.textContent = file.name;
@@ -114,7 +192,7 @@ function clearFile() {
 // ─── Input change listeners ───────────────────────────────────────────────────
 
 inputRaw.addEventListener('change', () => {
-  if (inputRaw.files[0]) setFile(inputRaw.files[0]);
+  if (inputRaw.files[0]) openSessionModal(inputRaw.files[0]);
 });
 
 removeRaw.addEventListener('click', (e) => {
@@ -138,7 +216,7 @@ function setupDragDrop(zone) {
     e.preventDefault();
     zone.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
-    if (file) setFile(file);
+    if (file) openSessionModal(file);
   });
 }
 
