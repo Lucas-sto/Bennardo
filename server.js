@@ -59,6 +59,32 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
 });
 
+const uploadVideo = multer({
+  storage,
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'video/mp4' || file.originalname.endsWith('.mp4')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only MP4 files are allowed'));
+    }
+  },
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
+});
+
+// ─── Metadata helpers ─────────────────────────────────────────────────────────
+
+const METADATA_FILE = path.join(UPLOADS_DIR, '.metadata.json');
+
+function readMetadata() {
+  if (!fs.existsSync(METADATA_FILE)) return {};
+  try { return JSON.parse(fs.readFileSync(METADATA_FILE, 'utf8')); }
+  catch (_) { return {}; }
+}
+
+function writeMetadata(data) {
+  fs.writeFileSync(METADATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
 // ─── Static files ─────────────────────────────────────────────────────────────
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -414,25 +440,46 @@ app.post('/api/generate', upload.single('raw'), async (req, res) => {
   }
 });
 
-// List all stored CSV files in the library
+// List all stored CSV and MP4 files in the library
 app.get('/api/files', (_req, res) => {
   try {
+    const metadata = readMetadata();
     const files = fs.readdirSync(UPLOADS_DIR)
-      .filter(f => f.endsWith('.csv'))
+      .filter(f => f.endsWith('.csv') || f.endsWith('.mp4'))
       .map(f => {
         const stat = fs.statSync(path.join(UPLOADS_DIR, f));
         const match = f.match(/^(\d+)_(.+)$/);
+        const meta  = metadata[f] || {};
         return {
           filename:   f,
           name:       match ? match[2] : f,
           size:       stat.size,
           uploadedAt: match ? parseInt(match[1]) : stat.mtimeMs,
+          type:       f.endsWith('.mp4') ? 'video' : 'csv',
+          linkedCsv:  meta.linkedCsv || null,
         };
       })
       .sort((a, b) => b.uploadedAt - a.uploadedAt);
     res.json({ files });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload MP4 video and link it to a CSV file
+app.post('/api/upload-video', uploadVideo.single('video'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'MP4 file is required.' });
+    const linkedCsv = req.body.linkedCsv ? path.basename(req.body.linkedCsv) : null;
+    if (linkedCsv) {
+      const metadata = readMetadata();
+      metadata[req.file.filename] = { linkedCsv };
+      writeMetadata(metadata);
+    }
+    res.json({ success: true, filename: req.file.filename });
+  } catch (err) {
+    console.error('Video upload error:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 
@@ -477,6 +524,12 @@ app.delete('/api/files/:filename', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found.' });
   fs.unlink(filePath, (err) => {
     if (err) return res.status(500).json({ error: err.message });
+    // Clean up metadata entry for videos
+    if (safeName.endsWith('.mp4')) {
+      const metadata = readMetadata();
+      delete metadata[safeName];
+      writeMetadata(metadata);
+    }
     res.json({ success: true });
   });
 });

@@ -15,6 +15,12 @@ const btnModalConfirm  = document.getElementById('btnModalConfirm');
 const btnModalCancel   = document.getElementById('btnModalCancel');
 const advisorNameInput = document.getElementById('advisorName');
 
+const videoModal           = document.getElementById('videoModal');
+const btnVideoModalConfirm = document.getElementById('btnVideoModalConfirm');
+const btnVideoModalCancel  = document.getElementById('btnVideoModalCancel');
+const videoCsvList         = document.getElementById('videoCsvList');
+const videoModalDesc       = document.getElementById('videoModalDesc');
+
 const btnGenerate      = document.getElementById('btnGenerate');
 const generateHint     = document.getElementById('generateHint');
 
@@ -35,10 +41,12 @@ const lines            = document.querySelectorAll('.upload-progress__line');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let fileRaw            = null;
-let storedFilename     = null; // filename in /uploads/ of the currently active file
-let chartDataProcessed = false;
-let pendingFile        = null; // file waiting for session info modal confirmation
+let fileRaw             = null;
+let storedFilename      = null;
+let chartDataProcessed  = false;
+let pendingFile         = null;   // CSV waiting for session modal
+let pendingVideoFile    = null;   // MP4 waiting for video modal
+let selectedCsvForVideo = null;   // CSV filename chosen in video modal
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,15 +56,22 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function showToast(msg) {
+function showToast(msg, type) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
-
   const t = document.createElement('div');
-  t.className = 'toast';
+  t.className = type === 'success' ? 'toast toast--success' : 'toast';
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 5000);
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ─── Progress indicator ───────────────────────────────────────────────────────
@@ -79,13 +94,11 @@ function updateProgress() {
     : 'Please upload a CSV file or select one from the library to enable report generation.';
 }
 
-// ─── Session Info Modal ───────────────────────────────────────────────────────
+// ─── Session Info Modal (CSV) ─────────────────────────────────────────────────
 
 function openSessionModal(file) {
   if (!file) return;
-
-  // Basic validation before showing modal
-  if (!file.name.endsWith('.csv')) {
+  if (!file.name.toLowerCase().endsWith('.csv')) {
     showToast(`"${file.name}" is not a CSV file. Please select a .csv file.`);
     return;
   }
@@ -97,32 +110,23 @@ function openSessionModal(file) {
   pendingFile = file;
   advisorNameInput.value = '';
   advisorNameInput.classList.remove('input--error');
-  // Reset radio to E
   const radioE = document.querySelector('input[name="storeType"][value="E"]');
   if (radioE) radioE.checked = true;
 
   sessionModal.hidden = false;
-  // Focus name input after transition
   setTimeout(() => advisorNameInput.focus(), 80);
 }
 
 function closeSessionModal() {
   sessionModal.hidden = true;
   pendingFile = null;
-  // Reset file input so the same file can be re-selected if cancelled
   inputRaw.value = '';
 }
 
 btnModalCancel.addEventListener('click', closeSessionModal);
 
-// Close on backdrop click
 sessionModal.addEventListener('click', (e) => {
   if (e.target === sessionModal) closeSessionModal();
-});
-
-// Close on Escape key
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !sessionModal.hidden) closeSessionModal();
 });
 
 btnModalConfirm.addEventListener('click', () => {
@@ -136,30 +140,144 @@ btnModalConfirm.addEventListener('click', () => {
   advisorNameInput.classList.remove('input--error');
 
   const storeType = document.querySelector('input[name="storeType"]:checked').value;
-
-  // Build date string DD.MM.YYYY
   const now  = new Date();
   const dd   = String(now.getDate()).padStart(2, '0');
   const mm   = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = now.getFullYear();
-  const dateStr = `${dd}.${mm}.${yyyy}`;
-
-  // Sanitize name: keep letters, digits, hyphens; replace everything else with _
-  const safeName    = name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, '_');
+  const dateStr    = `${dd}.${mm}.${yyyy}`;
+  const safeName   = name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, '_');
   const newFilename = `${storeType}_${safeName}_${dateStr}.csv`;
 
   const renamedFile = new File([pendingFile], newFilename, { type: 'text/csv' });
-
   sessionModal.hidden = true;
   pendingFile = null;
-
   setFile(renamedFile);
 });
 
-// Allow submitting with Enter in the name field
 advisorNameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') btnModalConfirm.click();
 });
+
+// ─── Video Link Modal (MP4) ───────────────────────────────────────────────────
+
+function openVideoModal(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.mp4')) {
+    showToast(`"${file.name}" is not an MP4 file.`);
+    return;
+  }
+  if (file.size > 500 * 1024 * 1024) {
+    showToast(`File is too large (${formatBytes(file.size)}). Maximum size is 500 MB.`);
+    return;
+  }
+
+  pendingVideoFile    = file;
+  selectedCsvForVideo = null;
+  btnVideoModalConfirm.disabled = true;
+
+  videoModalDesc.textContent =
+    `Video: "${file.name}" (${formatBytes(file.size)}) — select the CSV session file to link it with.`;
+
+  const csvFiles = currentLibraryFiles.filter(f => f.type === 'csv');
+  if (!csvFiles.length) {
+    videoCsvList.innerHTML = '<p class="modal__empty">No CSV files in library yet. Please upload a CSV first.</p>';
+  } else {
+    videoCsvList.innerHTML = '';
+    csvFiles.forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'modal__csv-item';
+      item.dataset.filename = f.filename;
+      item.innerHTML = `
+        <span class="modal__csv-check"></span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span class="modal__csv-item-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      `;
+      item.addEventListener('click', () => {
+        videoCsvList.querySelectorAll('.modal__csv-item').forEach(el => el.classList.remove('selected'));
+        item.classList.add('selected');
+        selectedCsvForVideo = f.filename;
+        btnVideoModalConfirm.disabled = false;
+      });
+      videoCsvList.appendChild(item);
+    });
+  }
+
+  videoModal.hidden = false;
+}
+
+function closeVideoModal() {
+  videoModal.hidden   = true;
+  pendingVideoFile    = null;
+  selectedCsvForVideo = null;
+  inputRaw.value      = '';
+}
+
+btnVideoModalCancel.addEventListener('click', closeVideoModal);
+
+videoModal.addEventListener('click', (e) => {
+  if (e.target === videoModal) closeVideoModal();
+});
+
+btnVideoModalConfirm.addEventListener('click', async () => {
+  if (!pendingVideoFile || !selectedCsvForVideo) return;
+
+  btnVideoModalConfirm.disabled    = true;
+  btnVideoModalConfirm.textContent = 'Uploading…';
+
+  try {
+    const formData = new FormData();
+    formData.append('video', pendingVideoFile);
+    formData.append('linkedCsv', selectedCsvForVideo);
+
+    const res    = await fetch('/api/upload-video', { method: 'POST', body: formData });
+    const result = await res.json();
+
+    if (!res.ok || !result.success) {
+      showToast(`Upload failed: ${result.error || 'Unknown error'}`);
+      btnVideoModalConfirm.disabled = false;
+      btnVideoModalConfirm.innerHTML =
+        'Upload Video <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>';
+      return;
+    }
+
+    videoModal.hidden   = true;
+    pendingVideoFile    = null;
+    selectedCsvForVideo = null;
+    inputRaw.value      = '';
+
+    showToast('Video uploaded and linked successfully.', 'success');
+    await refreshFileLibrary();
+  } catch (err) {
+    showToast(`Network error: ${err.message}`);
+    btnVideoModalConfirm.disabled = false;
+  }
+
+  btnVideoModalConfirm.innerHTML =
+    'Upload Video <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>';
+});
+
+// ─── Global Escape key handler ────────────────────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (!sessionModal.hidden) closeSessionModal();
+    if (!videoModal.hidden)   closeVideoModal();
+  }
+});
+
+// ─── File selection dispatcher ────────────────────────────────────────────────
+
+function dispatchFile(file) {
+  if (!file) return;
+  if (file.name.toLowerCase().endsWith('.mp4')) {
+    openVideoModal(file);
+  } else {
+    openSessionModal(file);
+  }
+}
 
 // ─── File selection (new upload) ──────────────────────────────────────────────
 
@@ -186,13 +304,13 @@ function clearFile() {
   zoneRaw.classList.remove('has-file');
   disableChartButtons();
   updateProgress();
-  renderFileLibrary(currentLibraryFiles); // refresh active state in library
+  renderFileLibrary(currentLibraryFiles);
 }
 
 // ─── Input change listeners ───────────────────────────────────────────────────
 
 inputRaw.addEventListener('change', () => {
-  if (inputRaw.files[0]) openSessionModal(inputRaw.files[0]);
+  if (inputRaw.files[0]) dispatchFile(inputRaw.files[0]);
 });
 
 removeRaw.addEventListener('click', (e) => {
@@ -207,16 +325,14 @@ function setupDragDrop(zone) {
     e.preventDefault();
     zone.classList.add('drag-over');
   });
-
   zone.addEventListener('dragleave', () => {
     zone.classList.remove('drag-over');
   });
-
   zone.addEventListener('drop', (e) => {
     e.preventDefault();
     zone.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
-    if (file) openSessionModal(file);
+    if (file) dispatchFile(file);
   });
 }
 
@@ -241,7 +357,6 @@ function startLoadingAnimation() {
   loadingOverlay.hidden = false;
   loadingBarFill.style.width = '0%';
   loadingStep.textContent = LOADING_STEPS[0].text;
-
   let idx = 0;
   loadingTimer = setInterval(() => {
     idx = Math.min(idx + 1, LOADING_STEPS.length - 1);
@@ -267,12 +382,11 @@ btnGenerate.addEventListener('click', async () => {
 
   try {
     let res;
-
     if (storedFilename) {
       res = await fetch('/api/generate-stored', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: storedFilename }),
+        body:    JSON.stringify({ filename: storedFilename }),
       });
     } else {
       const formData = new FormData();
@@ -311,8 +425,6 @@ btnGenerate.addEventListener('click', async () => {
 
     resultCard.hidden = false;
     resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // Refresh library in case a new file was stored
     await refreshFileLibrary();
 
   } catch (err) {
@@ -335,20 +447,16 @@ btnReset.addEventListener('click', () => {
 async function processChartData(file) {
   const formData = new FormData();
   formData.append('raw', file);
-
   try {
     const res    = await fetch('/api/process', { method: 'POST', body: formData });
     const result = await res.json();
-
     if (!res.ok || !result.success) {
       console.error('Chart data processing failed:', result.error);
       return;
     }
-
     sessionStorage.setItem('chartData', JSON.stringify(result.data));
     storedFilename     = result.storedFilename;
     chartDataProcessed = true;
-
     enableChartButtons();
     await refreshFileLibrary();
   } catch (err) {
@@ -409,32 +517,54 @@ function renderFileLibrary(files) {
 
   list.innerHTML = '';
   files.forEach(f => {
-    const isActive = storedFilename === f.filename;
+    const isVideo  = f.type === 'video';
+    const isActive = !isVideo && storedFilename === f.filename;
     const date = new Date(f.uploadedAt).toLocaleString('de-DE', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
 
     const item = document.createElement('div');
-    item.className = `file-library__item${isActive ? ' active' : ''}`;
+    item.className = `file-library__item${isActive ? ' active' : ''}${isVideo ? ' file-library__item--video' : ''}`;
+
+    const iconSvg = isVideo
+      ? `<svg class="icon file-library__item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+           <polygon points="23 7 16 12 23 17 23 7"/>
+           <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+         </svg>`
+      : `<svg class="icon file-library__item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+           <polyline points="14 2 14 8 20 8"/>
+         </svg>`;
+
+    const linkedCsvHtml = (isVideo && f.linkedCsv)
+      ? `<div class="file-library__linked-csv">&#128279; ${escapeHtml(f.linkedCsv)}</div>`
+      : '';
+
+    const actionsHtml = isVideo
+      ? `<div class="file-library__actions">
+           <button class="btn-delete-file">Delete</button>
+         </div>`
+      : `<div class="file-library__actions">
+           <button class="btn-select-file" ${isActive ? 'disabled' : ''}>${isActive ? 'Selected' : 'Select'}</button>
+           <button class="btn-delete-file">Delete</button>
+         </div>`;
+
     item.innerHTML = `
-      <svg class="icon file-library__item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-      </svg>
+      ${iconSvg}
       <div class="file-library__item-info">
         <div class="file-library__item-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
         <div class="file-library__item-meta">${escapeHtml(formatBytes(f.size))} · ${escapeHtml(date)}</div>
+        ${linkedCsvHtml}
       </div>
-      <div class="file-library__actions">
-        <button class="btn-select-file" ${isActive ? 'disabled' : ''}>${isActive ? 'Selected' : 'Select'}</button>
-        <button class="btn-delete-file">Delete</button>
-      </div>
+      ${actionsHtml}
     `;
 
-    item.querySelector('.btn-select-file').addEventListener('click', () => {
-      selectStoredFile(f.filename, f.name, f.size);
-    });
+    if (!isVideo) {
+      item.querySelector('.btn-select-file').addEventListener('click', () => {
+        selectStoredFile(f.filename, f.name, f.size);
+      });
+    }
 
     item.querySelector('.btn-delete-file').addEventListener('click', () => {
       deleteStoredFile(f.filename);
@@ -445,7 +575,6 @@ function renderFileLibrary(files) {
 }
 
 async function selectStoredFile(filename, displayName, size) {
-  // Update upload zone UI to reflect selected file
   storedFilename          = filename;
   fileRaw                 = null;
   filenameRaw.textContent = displayName;
@@ -454,9 +583,8 @@ async function selectStoredFile(filename, displayName, size) {
   previewRaw.hidden       = false;
   zoneRaw.classList.add('has-file');
   updateProgress();
-  renderFileLibrary(currentLibraryFiles); // immediately show selected state
+  renderFileLibrary(currentLibraryFiles);
 
-  // Process chart data for the selected file
   disableChartButtons();
   try {
     const res    = await fetch('/api/process-stored', {
@@ -465,12 +593,10 @@ async function selectStoredFile(filename, displayName, size) {
       body:    JSON.stringify({ filename }),
     });
     const result = await res.json();
-
     if (!res.ok || !result.success) {
       showToast(`Error: ${result.error || 'Processing failed'}`);
       return;
     }
-
     sessionStorage.setItem('chartData', JSON.stringify(result.data));
     chartDataProcessed = true;
     enableChartButtons();
@@ -486,34 +612,20 @@ async function deleteStoredFile(filename) {
       showToast('Failed to delete file.');
       return;
     }
-    if (storedFilename === filename) {
-      clearFile();
-    }
+    if (storedFilename === filename) clearFile();
     await refreshFileLibrary();
   } catch (err) {
     showToast(`Network error: ${err.message}`);
   }
 }
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 updateProgress();
 
-// Re-enable chart buttons if data is still in session storage
 if (sessionStorage.getItem('chartData')) {
   chartDataProcessed = true;
   enableChartButtons();
 }
 
-// Load file library on startup
 refreshFileLibrary();

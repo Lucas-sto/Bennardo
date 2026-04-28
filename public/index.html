@@ -57,7 +57,7 @@
         <div class="upload-grid">
           <!-- Raw upload -->
           <div class="upload-zone" id="zoneRaw" style="grid-column: 1 / -1;">
-            <input type="file" id="inputRaw" accept=".csv" hidden />
+            <input type="file" id="inputRaw" accept=".csv,.mp4,video/mp4" hidden />
             <label for="inputRaw" class="upload-zone__label" id="labelRaw">
               <div class="upload-zone__icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -67,9 +67,9 @@
                   <line x1="9" y1="15" x2="15" y2="15"/>
                 </svg>
               </div>
-              <span class="upload-zone__tag">Upload Raw Fixations CSV</span>
+              <span class="upload-zone__tag">Upload CSV or MP4</span>
               <span class="upload-zone__hint">Drag &amp; drop or click to browse</span>
-              <span class="upload-zone__format">.csv files only · max 50 MB</span>
+              <span class="upload-zone__format">.csv (max 50 MB) &nbsp;·&nbsp; .mp4 (max 500 MB)</span>
             </label>
             <div class="upload-zone__preview" id="previewRaw" hidden>
               <svg class="icon icon--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -329,6 +329,37 @@
     <footer class="footer">
       <p>EyeTracking Dashboard for Shopping Advisors &nbsp;·&nbsp; Analysis & Reporting Tool</p>
     </footer>
+
+    <!-- ── Video Link Modal ──────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="videoModal" hidden>
+      <div class="modal">
+        <h2 class="modal__title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="23 7 16 12 23 17 23 7"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+          Link Video to Session
+        </h2>
+        <p class="modal__desc" id="videoModalDesc">Select the CSV file that belongs to this video recording.</p>
+
+        <div class="modal__field">
+          <span class="modal__label">Select CSV from Library</span>
+          <div class="modal__csv-list" id="videoCsvList">
+            <p class="modal__empty">No CSV files in library yet. Please upload a CSV first.</p>
+          </div>
+        </div>
+
+        <div class="modal__actions">
+          <button class="btn btn--outline" id="btnVideoModalCancel">Cancel</button>
+          <button class="btn btn--primary" id="btnVideoModalConfirm" disabled>
+            Upload Video
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Session Info Modal ────────────────────────────────────────────── -->
     <div class="modal-overlay" id="sessionModal" hidden>
